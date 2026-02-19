@@ -140,16 +140,30 @@ body {
   width: 100vw;
 }
 
-a { color: var(--color-accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
 
 /* --- Scrollbar --- */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--color-scrollbar-track); }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-scrollbar-track);
+}
+
 ::-webkit-scrollbar-thumb {
   background: var(--color-scrollbar-thumb);
   border-radius: var(--radius-full);
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-scrollbar-thumb-hover);
 }
@@ -497,6 +511,23 @@ a:hover { text-decoration: underline; }
   padding: 1px 4px;
   outline: none;
   width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-tree-rename-input:focus {
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  gap: var(--space-3);
 }
 
 /* --- Editor Area --- */
@@ -1021,22 +1052,44 @@ a:hover { text-decoration: underline; }
   max-width: 360px;
 }
 
-.toast.success { border-left: 3px solid var(--color-accent-green); }
-.toast.error { border-left: 3px solid var(--color-accent-red); }
-.toast.info { border-left: 3px solid var(--color-accent); }
+.toast.success {
+  border-left: 3px solid var(--color-accent-green);
+}
+
+.toast.error {
+  border-left: 3px solid var(--color-accent-red);
+}
+
+.toast.info {
+  border-left: 3px solid var(--color-accent);
+}
 
 .toast-removing {
   animation: toast-out 0.2s ease forwards;
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(30px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes toast-out {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(30px); }
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(30px);
+  }
 }
 
 /* --- Empty State --- */
@@ -1147,7 +1200,10 @@ a:hover { text-decoration: underline; }
 }
 
 /* --- Utility --- */
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1171,17 +1227,20 @@ a:hover { text-decoration: underline; }
 
 /* --- Loading Shimmer --- */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .loading-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-bg-surface) 25%,
-    var(--color-bg-hover) 50%,
-    var(--color-bg-surface) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-bg-surface) 25%,
+      var(--color-bg-hover) 50%,
+      var(--color-bg-surface) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);

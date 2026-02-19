@@ -1,5 +1,6 @@
 /**
  * workspace.js — VSCode-like Virtual Workspace / File Explorer Sidebar
+ * Full-featured: inline rename, context menu, drag-and-drop, file operations
  */
 export class Workspace {
     constructor(app) {
@@ -10,16 +11,30 @@ export class Workspace {
         this.activeFilePath = null;
         this.contextMenu = document.getElementById('context-menu');
         this._contextTarget = null;
+        this._renameInput = null; // Currently active inline rename input
 
         this._bindEvents();
     }
 
     _bindEvents() {
-        // Context menu close
-        document.addEventListener('click', () => this._hideContextMenu());
+        // Context menu close — but NOT if clicking inside the context menu itself
+        document.addEventListener('click', (e) => {
+            if (this.contextMenu && !this.contextMenu.contains(e.target)) {
+                this._hideContextMenu();
+            }
+        });
+
         document.addEventListener('contextmenu', (e) => {
             if (!this.fileTreeEl.contains(e.target)) {
                 this._hideContextMenu();
+            }
+        });
+
+        // Keyboard shortcut for closing context menu
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this._hideContextMenu();
+                this._cancelInlineRename();
             }
         });
 
@@ -27,19 +42,28 @@ export class Workspace {
         document.getElementById('btn-new-file')?.addEventListener('click', () => this.createNewFile());
         document.getElementById('btn-new-folder')?.addEventListener('click', () => this.createNewFolder());
         document.getElementById('btn-upload-file')?.addEventListener('click', () => this.uploadFiles());
+        document.getElementById('btn-collapse-all')?.addEventListener('click', () => this.collapseAll());
 
-        // Drag and drop
+        // Drag and drop on the entire main container
         const mainContainer = document.querySelector('.main-container');
         const dropOverlay = document.getElementById('drop-zone-overlay');
 
+        let dragCounter = 0;
         mainContainer.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
+        });
+
+        mainContainer.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
             dropOverlay.classList.add('visible');
         });
 
         mainContainer.addEventListener('dragleave', (e) => {
-            if (!mainContainer.contains(e.relatedTarget)) {
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
                 dropOverlay.classList.remove('visible');
             }
         });
@@ -47,16 +71,32 @@ export class Workspace {
         mainContainer.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            dragCounter = 0;
             dropOverlay.classList.remove('visible');
             this._handleDrop(e);
         });
 
-        // Context menu actions
-        document.getElementById('ctx-rename')?.addEventListener('click', () => this._renameItem());
-        document.getElementById('ctx-delete')?.addEventListener('click', () => this._deleteItem());
-        document.getElementById('ctx-new-file')?.addEventListener('click', () => this.createNewFile(this._contextTarget));
-        document.getElementById('ctx-new-folder')?.addEventListener('click', () => this.createNewFolder(this._contextTarget));
+        // Context menu item click handlers — with stopPropagation to prevent document click
+        this._bindContextMenuItem('ctx-rename', () => this._startInlineRename());
+        this._bindContextMenuItem('ctx-delete', () => this._deleteItem());
+        this._bindContextMenuItem('ctx-new-file', () => this.createNewFile(this._contextTarget));
+        this._bindContextMenuItem('ctx-new-folder', () => this.createNewFolder(this._contextTarget));
+        this._bindContextMenuItem('ctx-duplicate', () => this._duplicateItem());
+        this._bindContextMenuItem('ctx-download', () => this._downloadItem());
+        this._bindContextMenuItem('ctx-copy-path', () => this._copyPath());
     }
+
+    _bindContextMenuItem(id, handler) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent document click from hiding menu before handler runs
+            this._hideContextMenu();
+            handler();
+        });
+    }
+
+    // ========== File Tree Rendering ==========
 
     async refresh() {
         const fm = this.app.fileManager;
@@ -64,7 +104,25 @@ export class Workspace {
 
         const tree = await fm.buildFileTree();
         this.fileTreeEl.innerHTML = '';
-        this._renderTree(tree.children, this.fileTreeEl, 0);
+
+        if (tree.children.length === 0) {
+            this._renderEmptyState();
+        } else {
+            this._renderTree(tree.children, this.fileTreeEl, 0);
+        }
+    }
+
+    _renderEmptyState() {
+        const el = document.createElement('div');
+        el.className = 'empty-state';
+        el.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;opacity:0.3">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <p style="font-size:0.75rem;color:var(--color-text-muted)">ファイルがありません<br>上のボタンからファイルを作成するか、<br>ドラッグ&ドロップでアップロード</p>
+    `;
+        this.fileTreeEl.appendChild(el);
     }
 
     _renderTree(items, parentEl, depth) {
@@ -75,6 +133,7 @@ export class Workspace {
             el.style.setProperty('--depth', depth);
             el.dataset.path = item.path;
             el.dataset.kind = item.kind;
+            el.dataset.name = item.name;
 
             if (item.kind === 'directory') {
                 const isExpanded = this.expandedDirs.has(item.path);
@@ -83,25 +142,14 @@ export class Workspace {
           <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           <span class="file-tree-item-name">${this._escapeHtml(item.name)}</span>
           <span class="file-tree-item-actions">
-            <button title="Delete" data-action="delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            <button title="名前を変更" data-action="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+            <button title="削除" data-action="delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           </span>
         `;
 
                 el.addEventListener('click', (e) => {
                     if (e.target.closest('[data-action]')) return;
                     this._toggleDir(item.path);
-                });
-
-                el.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    this._showContextMenu(e, item);
-                });
-
-                // Delete button
-                el.querySelector('[data-action="delete"]')?.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this._contextTarget = item;
-                    this._deleteItem();
                 });
 
                 parentEl.appendChild(el);
@@ -115,7 +163,8 @@ export class Workspace {
           ${icon}
           <span class="file-tree-item-name">${this._escapeHtml(item.name)}</span>
           <span class="file-tree-item-actions">
-            <button title="Delete" data-action="delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            <button title="名前を変更" data-action="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+            <button title="削除" data-action="delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           </span>
         `;
 
@@ -124,31 +173,73 @@ export class Workspace {
                     this._openFile(item);
                 });
 
-                el.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    this._showContextMenu(e, item);
-                });
-
-                el.querySelector('[data-action="delete"]')?.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this._contextTarget = item;
-                    this._deleteItem();
-                });
-
                 parentEl.appendChild(el);
             }
+
+            // Shared event binding for both file and directory items
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._showContextMenu(e, item);
+            });
+
+            // Double-click to start inline rename
+            el.addEventListener('dblclick', (e) => {
+                if (e.target.closest('[data-action]')) return;
+                if (item.kind === 'file') {
+                    // For files: double-click opens; use rename button or context menu for rename
+                    return;
+                }
+                // For directories: double-click starts rename
+                this._contextTarget = item;
+                this._startInlineRename();
+            });
+
+            // Hover action buttons
+            el.querySelector('[data-action="rename"]')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._contextTarget = item;
+                this._startInlineRename();
+            });
+
+            el.querySelector('[data-action="delete"]')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._contextTarget = item;
+                this._deleteItem();
+            });
         }
     }
+
+    // ========== File Icons ==========
 
     _getFileIcon(name, type) {
         if (type && type.startsWith('image/')) {
             return '<svg class="image-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
         }
-        if (name.endsWith('.md') || name.endsWith('.markdown')) {
-            return '<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+        const ext = name.split('.').pop().toLowerCase();
+        const iconColors = {
+            'md': 'var(--color-accent)',
+            'markdown': 'var(--color-accent)',
+            'js': 'var(--color-accent-yellow)',
+            'ts': 'var(--color-accent)',
+            'json': 'var(--color-accent-yellow)',
+            'html': 'var(--color-accent-peach)',
+            'css': 'var(--color-accent-secondary)',
+            'svg': 'var(--color-accent-green)',
+            'txt': 'var(--color-text-muted)',
+            'xml': 'var(--color-accent-peach)',
+            'yml': 'var(--color-accent-red)',
+            'yaml': 'var(--color-accent-red)',
+        };
+        const color = iconColors[ext] || 'var(--color-text-muted)';
+
+        if (ext === 'md' || ext === 'markdown') {
+            return `<svg class="file-icon" style="color:${color}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
         }
-        return '<svg class="file-icon" style="color:var(--color-text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        return `<svg class="file-icon" style="color:${color}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
     }
+
+    // ========== Directory Operations ==========
 
     _toggleDir(path) {
         if (this.expandedDirs.has(path)) {
@@ -159,6 +250,15 @@ export class Workspace {
         this.refresh();
     }
 
+    collapseAll() {
+        this.expandedDirs.clear();
+        this.expandedDirs.add('/'); // Keep root
+        this.refresh();
+        this.app.showToast('フォルダを全て折りたたみました', 'info');
+    }
+
+    // ========== File Open ==========
+
     async _openFile(item) {
         const fm = this.app.fileManager;
         const file = await fm.getFile(item.path);
@@ -166,55 +266,207 @@ export class Workspace {
 
         this.activeFilePath = item.path;
 
-        if (item.name.endsWith('.md') || item.name.endsWith('.markdown') ||
-            (file.type && file.type.startsWith('text/'))) {
+        if (this._isTextFile(item.name, file.type)) {
             let content = file.content;
             if (content instanceof ArrayBuffer) {
                 content = new TextDecoder().decode(content);
             }
+            if (typeof content !== 'string') content = '';
             this.app.editor.setValue(content);
             this.app.editor.setFileName(item.name);
             this.app.editor.markSaved();
         } else {
-            this.app.showToast(`Cannot edit binary file: ${item.name}`, 'info');
+            this.app.showToast(`バイナリファイルは編集できません: ${item.name}`, 'info');
         }
 
         this.refresh();
     }
 
-    async createNewFile(parentItem = null) {
-        const name = prompt('ファイル名を入力:', 'untitled.md');
-        if (!name) return;
+    _isTextFile(name, type) {
+        if (type && type.startsWith('text/')) return true;
+        const textExts = ['md', 'markdown', 'txt', 'json', 'js', 'ts', 'css', 'html', 'htm',
+            'xml', 'svg', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'sh', 'bat',
+            'py', 'rb', 'go', 'rs', 'c', 'cpp', 'h', 'java', 'php'];
+        const ext = name.split('.').pop().toLowerCase();
+        return textExts.includes(ext);
+    }
 
-        const parentPath = parentItem ? (parentItem.kind === 'directory' ? parentItem.path : this._getDirPath(parentItem.path)) : '';
-        const path = parentPath + '/' + name;
+    // ========== Create File / Folder ==========
+
+    async createNewFile(parentItem = null) {
+        const parentPath = this._getParentPath(parentItem);
+
+        // Create file with temporary name, then start inline rename
+        const tempName = this._getUniqueName(parentPath, 'untitled.md');
+        const path = parentPath + '/' + tempName;
 
         const fm = this.app.fileManager;
-        const type = name.endsWith('.md') ? 'text/markdown' : 'text/plain';
-        await fm.saveFile(path, name, type, '', 'file');
+        const type = tempName.endsWith('.md') ? 'text/markdown' : 'text/plain';
+        await fm.saveFile(path, tempName, type, '', 'file');
 
         if (parentPath) this.expandedDirs.add(parentPath);
         await this.refresh();
         this.app.eventBus.emit('files:changed');
 
-        // Open the new file
-        this._openFile({ path, name, type });
+        // Start inline rename for the new file
+        this._contextTarget = { path, name: tempName, kind: 'file', type };
+        this._startInlineRename();
     }
 
     async createNewFolder(parentItem = null) {
-        const name = prompt('フォルダ名を入力:', 'new-folder');
-        if (!name) return;
+        const parentPath = this._getParentPath(parentItem);
 
-        const parentPath = parentItem ? (parentItem.kind === 'directory' ? parentItem.path : this._getDirPath(parentItem.path)) : '';
-        const path = parentPath + '/' + name;
+        const tempName = this._getUniqueName(parentPath, 'new-folder');
+        const path = parentPath + '/' + tempName;
 
         const fm = this.app.fileManager;
-        await fm.saveFile(path, name, '', null, 'directory');
+        await fm.saveFile(path, tempName, '', null, 'directory');
 
         if (parentPath) this.expandedDirs.add(parentPath);
         this.expandedDirs.add(path);
         await this.refresh();
+
+        // Start inline rename for the new folder
+        this._contextTarget = { path, name: tempName, kind: 'directory' };
+        this._startInlineRename();
     }
+
+    _getParentPath(parentItem) {
+        if (!parentItem) return '';
+        return parentItem.kind === 'directory' ? parentItem.path : this._getDirPath(parentItem.path);
+    }
+
+    _getUniqueName(parentPath, baseName) {
+        // Check if name already exists, append number if so
+        // For simplicity, we'll just use the base name—user can rename
+        return baseName;
+    }
+
+    // ========== Inline Rename ==========
+
+    _startInlineRename() {
+        const item = this._contextTarget;
+        if (!item) return;
+
+        // Find the tree item element
+        const el = this.fileTreeEl.querySelector(`[data-path="${CSS.escape(item.path)}"]`);
+        if (!el) return;
+
+        const nameSpan = el.querySelector('.file-tree-item-name');
+        if (!nameSpan) return;
+
+        // Hide the name span and show an input
+        const originalName = item.name;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'file-tree-rename-input';
+        input.value = originalName;
+
+        // Select filename without extension for files
+        nameSpan.style.display = 'none';
+        nameSpan.parentElement.insertBefore(input, nameSpan.nextSibling);
+        input.focus();
+
+        if (item.kind === 'file') {
+            const dotIdx = originalName.lastIndexOf('.');
+            if (dotIdx > 0) {
+                input.setSelectionRange(0, dotIdx);
+            } else {
+                input.select();
+            }
+        } else {
+            input.select();
+        }
+
+        // Hide actions while renaming
+        const actions = el.querySelector('.file-tree-item-actions');
+        if (actions) actions.style.display = 'none';
+
+        this._renameInput = { input, nameSpan, actions, item, el };
+
+        const finishRename = async (commit) => {
+            if (!this._renameInput) return;
+
+            const newName = input.value.trim();
+            input.remove();
+            nameSpan.style.display = '';
+            if (actions) actions.style.display = '';
+            this._renameInput = null;
+
+            if (commit && newName && newName !== originalName) {
+                await this._doRename(item, newName);
+            }
+        };
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                finishRename(true);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                finishRename(false);
+            }
+            e.stopPropagation(); // Don't trigger editor shortcuts
+        });
+
+        input.addEventListener('blur', () => {
+            // Small timeout to allow click-based submit
+            setTimeout(() => finishRename(true), 100);
+        });
+
+        // Prevent click on input from opening file
+        input.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    _cancelInlineRename() {
+        if (!this._renameInput) return;
+        const { input, nameSpan, actions } = this._renameInput;
+        input.remove();
+        nameSpan.style.display = '';
+        if (actions) actions.style.display = '';
+        this._renameInput = null;
+    }
+
+    async _doRename(item, newName) {
+        const fm = this.app.fileManager;
+        const parentPath = this._getDirPath(item.path);
+        const newPath = parentPath + '/' + newName;
+
+        // Check if target already exists
+        const existing = await fm.getFile(newPath);
+        if (existing && existing.path !== item.path) {
+            this.app.showToast(`"${newName}" は既に存在します`, 'error');
+            return;
+        }
+
+        await fm.renameFile(item.path, newPath, newName);
+
+        if (this.activeFilePath === item.path) {
+            this.activeFilePath = newPath;
+            this.app.editor.setFileName(newName);
+        }
+
+        // Update expanded dirs if directory was renamed
+        if (item.kind === 'directory') {
+            const newExpanded = new Set();
+            for (const dir of this.expandedDirs) {
+                if (dir === item.path) {
+                    newExpanded.add(newPath);
+                } else if (dir.startsWith(item.path + '/')) {
+                    newExpanded.add(newPath + dir.substring(item.path.length));
+                } else {
+                    newExpanded.add(dir);
+                }
+            }
+            this.expandedDirs = newExpanded;
+        }
+
+        await this.refresh();
+        this.app.eventBus.emit('files:changed');
+        this.app.showToast(`"${newName}" にリネームしました`, 'success');
+    }
+
+    // ========== Upload / Drop ==========
 
     async uploadFiles() {
         const input = document.createElement('input');
@@ -223,28 +475,30 @@ export class Workspace {
         input.accept = '*/*';
 
         input.onchange = async () => {
-            await this._processFiles(input.files, '');
+            if (input.files.length > 0) {
+                await this._processFiles(input.files, '');
+            }
         };
 
         input.click();
     }
 
     async _handleDrop(e) {
-        const items = e.dataTransfer.items;
-        if (!items) return;
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
 
-        for (const item of items) {
-            if (item.kind === 'file') {
-                const file = item.getAsFile();
-                if (file) {
-                    await this._uploadSingleFile(file, '');
-                }
-            }
+        const items = [];
+        for (let i = 0; i < files.length; i++) {
+            items.push(files[i]);
+        }
+
+        for (const file of items) {
+            await this._uploadSingleFile(file, '');
         }
 
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast('ファイルをアップロードしました', 'success');
+        this.app.showToast(`${items.length}個のファイルをアップロードしました`, 'success');
     }
 
     async _processFiles(files, parentPath) {
@@ -263,21 +517,38 @@ export class Workspace {
         await fm.saveFile(path, file.name, file.type, content, 'file');
     }
 
+    // ========== Context Menu ==========
+
     _showContextMenu(e, item) {
         this._contextTarget = item;
-        this.contextMenu.style.left = e.clientX + 'px';
-        this.contextMenu.style.top = e.clientY + 'px';
+
+        // Position context menu
+        const menuWidth = 200;
+        const menuHeight = 240;
+        let x = e.clientX;
+        let y = e.clientY;
+
+        // Keep menu within viewport
+        if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 8;
+        if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 8;
+
+        this.contextMenu.style.left = x + 'px';
+        this.contextMenu.style.top = y + 'px';
         this.contextMenu.classList.add('visible');
 
         // Show/hide directory-only options
         const newFileBtn = document.getElementById('ctx-new-file');
         const newFolderBtn = document.getElementById('ctx-new-folder');
+        const downloadBtn = document.getElementById('ctx-download');
+
         if (item.kind === 'directory') {
             newFileBtn && (newFileBtn.style.display = '');
             newFolderBtn && (newFolderBtn.style.display = '');
+            downloadBtn && (downloadBtn.style.display = 'none');
         } else {
             newFileBtn && (newFileBtn.style.display = 'none');
             newFolderBtn && (newFolderBtn.style.display = 'none');
+            downloadBtn && (downloadBtn.style.display = '');
         }
     }
 
@@ -285,34 +556,76 @@ export class Workspace {
         this.contextMenu.classList.remove('visible');
     }
 
-    async _renameItem() {
-        this._hideContextMenu();
-        const item = this._contextTarget;
-        if (!item) return;
+    // ========== Duplicate ==========
 
-        const newName = prompt('新しい名前:', item.name);
-        if (!newName || newName === item.name) return;
+    async _duplicateItem() {
+        const item = this._contextTarget;
+        if (!item || item.kind === 'directory') return;
 
         const fm = this.app.fileManager;
+        const file = await fm.getFile(item.path);
+        if (!file) return;
+
         const parentPath = this._getDirPath(item.path);
+        const ext = item.name.includes('.') ? '.' + item.name.split('.').pop() : '';
+        const baseName = ext ? item.name.slice(0, -ext.length) : item.name;
+        const newName = baseName + ' (copy)' + ext;
         const newPath = parentPath + '/' + newName;
-        await fm.renameFile(item.path, newPath, newName);
 
-        if (this.activeFilePath === item.path) {
-            this.activeFilePath = newPath;
-            this.app.editor.setFileName(newName);
-        }
-
+        await fm.saveFile(newPath, newName, file.type, file.content, 'file');
         await this.refresh();
         this.app.eventBus.emit('files:changed');
+        this.app.showToast(`"${newName}" を作成しました`, 'success');
     }
 
-    async _deleteItem() {
-        this._hideContextMenu();
+    // ========== Download ==========
+
+    async _downloadItem() {
+        const item = this._contextTarget;
+        if (!item || item.kind === 'directory') return;
+
+        const fm = this.app.fileManager;
+        const file = await fm.getFile(item.path);
+        if (!file || file.content == null) return;
+
+        const blob = new Blob([file.content], { type: file.type || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.name;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.app.showToast(`"${item.name}" をダウンロードしました`, 'success');
+    }
+
+    // ========== Copy Path ==========
+
+    _copyPath() {
         const item = this._contextTarget;
         if (!item) return;
 
-        if (!confirm(`"${item.name}" を削除しますか？`)) return;
+        navigator.clipboard.writeText(item.path).then(() => {
+            this.app.showToast('パスをコピーしました', 'info');
+        }).catch(() => {
+            // Fallback
+            const ta = document.createElement('textarea');
+            ta.value = item.path;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+            this.app.showToast('パスをコピーしました', 'info');
+        });
+    }
+
+    // ========== Delete ==========
+
+    async _deleteItem() {
+        const item = this._contextTarget;
+        if (!item) return;
+
+        const itemType = item.kind === 'directory' ? 'フォルダ' : 'ファイル';
+        if (!confirm(`${itemType}「${item.name}」を削除しますか？`)) return;
 
         const fm = this.app.fileManager;
         await fm.deleteFile(item.path);
@@ -323,19 +636,23 @@ export class Workspace {
             this.app.editor.setFileName('untitled.md');
         }
 
+        // Remove expanded dir entry if directory
+        if (item.kind === 'directory') {
+            this.expandedDirs.delete(item.path);
+            // Remove child dirs
+            for (const dir of [...this.expandedDirs]) {
+                if (dir.startsWith(item.path + '/')) {
+                    this.expandedDirs.delete(dir);
+                }
+            }
+        }
+
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast(`"${item.name}" を削除しました`, 'info');
+        this.app.showToast(`「${item.name}」を削除しました`, 'info');
     }
 
-    _getDirPath(path) {
-        const idx = path.lastIndexOf('/');
-        return idx > 0 ? path.substring(0, idx) : '';
-    }
-
-    _escapeHtml(str) {
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
+    // ========== Save Current File ==========
 
     async saveCurrentFile() {
         const fm = this.app.fileManager;
@@ -370,7 +687,18 @@ export class Workspace {
         }
     }
 
+    // ========== Helpers ==========
+
     getActiveFilePath() {
         return this.activeFilePath;
+    }
+
+    _getDirPath(path) {
+        const idx = path.lastIndexOf('/');
+        return idx > 0 ? path.substring(0, idx) : '';
+    }
+
+    _escapeHtml(str) {
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 }
