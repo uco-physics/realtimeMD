@@ -63,23 +63,20 @@ class App {
         this._bindTheme();
         this._bindMobile();
 
-        // Restore session
+        // Restore session or initialize fresh
         const restored = await this.storage.restoreSession();
         if (restored) {
+            // Ensure the default file exists and is synced
+            await this._ensureDefaultFile();
             await this.workspace.refresh();
-            // Trigger initial render
             this.eventBus.emit('editor:input', this.editor.getValue());
         } else {
-            // Default content
-            this.editor.setValue(this._getDefaultContent());
+            // First launch — create default file with welcome content
+            const defaultContent = this._getDefaultContent();
+            await this._createDefaultFile(defaultContent);
+            this.editor.setValue(defaultContent);
             this.editor.markSaved();
             this.eventBus.emit('editor:input', this.editor.getValue());
-        }
-
-        // Check if workspace has files, if so show sidebar
-        const files = await this.fileManager.getAllFiles();
-        if (files.length > 0) {
-            await this.workspace.refresh();
         }
 
         // Run extension init hook
@@ -89,6 +86,36 @@ class App {
         this._updateStatusBar();
 
         console.log('RealtimeMD initialized');
+    }
+
+    /**
+     * Create the default untitled.md in the virtual filesystem
+     */
+    async _createDefaultFile(content) {
+        const path = '/untitled.md';
+        const name = 'untitled.md';
+        await this.fileManager.saveFile(path, name, 'text/markdown', content, 'file');
+        this.workspace.activeFilePath = path;
+        this.editor.setFileName(name);
+        await this.workspace.refresh();
+    }
+
+    /**
+     * Ensure default file exists (on session restore, check if there's an active file)
+     */
+    async _ensureDefaultFile() {
+        const files = await this.fileManager.getAllFiles();
+        if (files.length === 0) {
+            // No files at all — create default
+            await this._createDefaultFile(this.editor.getValue() || this._getDefaultContent());
+        } else if (!this.workspace.activeFilePath) {
+            // Files exist but none is active — open the first .md file
+            const mdFile = files.find(f => f.name.endsWith('.md') && f.kind === 'file');
+            if (mdFile) {
+                this.workspace.activeFilePath = mdFile.path;
+                this.editor.setFileName(mdFile.name);
+            }
+        }
     }
 
     _bindToolbar() {
@@ -182,9 +209,9 @@ class App {
     }
 
     _bindStatusBar() {
-        // Status bar updates on cursor change
         this.editor.textarea.addEventListener('keyup', () => this._updateStatusBar());
         this.editor.textarea.addEventListener('click', () => this._updateStatusBar());
+        this.editor.textarea.addEventListener('input', () => this._updateStatusBar());
     }
 
     _updateStatusBar() {
@@ -201,11 +228,18 @@ class App {
             await this.workspace.saveCurrentFile();
         });
 
-        // Scroll sync
+        // Scroll sync (editor → preview)
+        let scrollSyncTimer = null;
         this.editor.textarea.addEventListener('scroll', () => {
-            const el = this.editor.textarea;
-            const percent = el.scrollTop / (el.scrollHeight - el.clientHeight || 1);
-            this.preview.scrollToPercent(percent);
+            clearTimeout(scrollSyncTimer);
+            scrollSyncTimer = setTimeout(() => {
+                const el = this.editor.textarea;
+                const maxScroll = el.scrollHeight - el.clientHeight;
+                if (maxScroll > 0) {
+                    const percent = el.scrollTop / maxScroll;
+                    this.preview.scrollToPercent(percent);
+                }
+            }, 16);
         });
     }
 
@@ -218,36 +252,47 @@ class App {
         if (!handle || !container) return;
 
         let isResizing = false;
+        let startX = 0;
+        let startEditorWidth = 0;
 
-        handle.addEventListener('mousedown', (e) => {
+        const onMouseDown = (e) => {
             isResizing = true;
+            startX = e.clientX || e.touches?.[0]?.clientX || 0;
+            startEditorWidth = editorPane.getBoundingClientRect().width;
             handle.classList.add('active');
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
             e.preventDefault();
-        });
+        };
 
-        document.addEventListener('mousemove', (e) => {
+        const onMouseMove = (e) => {
             if (!isResizing) return;
+            const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
             const rect = container.getBoundingClientRect();
-            const percent = ((e.clientX - rect.left) / rect.width) * 100;
+            const percent = ((clientX - rect.left) / rect.width) * 100;
             const clamped = Math.max(20, Math.min(80, percent));
             editorPane.style.flex = `0 0 ${clamped}%`;
             previewPane.style.flex = `0 0 ${100 - clamped}%`;
-        });
+        };
 
-        document.addEventListener('mouseup', () => {
+        const onMouseUp = () => {
             if (isResizing) {
                 isResizing = false;
                 handle.classList.remove('active');
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
             }
-        });
+        };
+
+        handle.addEventListener('mousedown', onMouseDown);
+        handle.addEventListener('touchstart', onMouseDown, { passive: false });
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('touchmove', onMouseMove, { passive: false });
+        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('touchend', onMouseUp);
     }
 
     _bindTheme() {
-        // Default to dark
         if (!document.documentElement.getAttribute('data-theme')) {
             document.documentElement.setAttribute('data-theme', 'dark');
         }
@@ -262,7 +307,7 @@ class App {
     }
 
     _bindMobile() {
-        // Nothing extra needed — CSS handles layout, ribbon/sidebar handled via button
+        // Nothing extra — CSS handles layout
     }
 
     showToast(message, type = 'info') {

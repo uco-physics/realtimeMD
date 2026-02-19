@@ -338,18 +338,34 @@ export class Workspace {
     }
 
     async saveCurrentFile() {
+        const fm = this.app.fileManager;
+        const content = this.app.editor.getValue();
+
         if (!this.activeFilePath) {
-            // Create a new file for current content
-            await this.createNewFile();
+            // No active file — silently create /untitled.md
+            const path = '/untitled.md';
+            const name = 'untitled.md';
+            await fm.saveFile(path, name, 'text/markdown', content, 'file');
+            this.activeFilePath = path;
+            this.app.editor.setFileName(name);
+            this.app.editor.markSaved();
+            await this.refresh();
+            this.app.eventBus.emit('files:changed');
+            this.app.showToast('保存しました', 'success');
             return;
         }
 
-        const fm = this.app.fileManager;
-        const content = this.app.editor.getValue();
         const file = await fm.getFile(this.activeFilePath);
         if (file) {
             await fm.saveFile(file.path, file.name, file.type, content, 'file');
             this.app.editor.markSaved();
+            this.app.showToast('保存しました', 'success');
+        } else {
+            // File was deleted but path still set — recreate
+            const name = this.activeFilePath.split('/').pop();
+            await fm.saveFile(this.activeFilePath, name, 'text/markdown', content, 'file');
+            this.app.editor.markSaved();
+            await this.refresh();
             this.app.showToast('保存しました', 'success');
         }
     }

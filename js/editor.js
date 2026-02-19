@@ -1,6 +1,7 @@
 /**
- * editor.js — Editor Component
- * Full-featured textarea editor with line numbers, shortcuts, and toolbar actions.
+ * editor.js — Editor Component (Production)
+ * Full-featured textarea editor with line numbers, proper undo/redo,
+ * keyboard shortcuts, auto-indent, list continuation, and toolbar actions.
  */
 export class Editor {
     constructor(app) {
@@ -9,8 +10,13 @@ export class Editor {
         this.lineNumbers = document.getElementById('line-numbers');
         this.unsavedDot = document.getElementById('editor-unsaved-dot');
         this.fileNameEl = document.getElementById('editor-file-name');
+
+        // Proper undo/redo with input-based snapshots
         this.undoStack = [];
         this.redoStack = [];
+        this._lastSnapshot = '';
+        this._snapshotTimer = null;
+
         this._lastSavedContent = '';
         this._debounceTimer = null;
         this._init();
@@ -20,6 +26,7 @@ export class Editor {
         this.textarea.addEventListener('input', () => this._onInput());
         this.textarea.addEventListener('scroll', () => this._syncLineNumbers());
         this.textarea.addEventListener('keydown', (e) => this._onKeyDown(e));
+        this.textarea.addEventListener('focus', () => this._takeSnapshotIfNeeded());
         this._updateLineNumbers();
     }
 
@@ -29,9 +36,10 @@ export class Editor {
 
     setValue(value, pushUndo = false) {
         if (pushUndo) {
-            this._pushUndo();
+            this._pushSnapshot();
         }
         this.textarea.value = value;
+        this._lastSnapshot = value;
         this._onInput();
     }
 
@@ -48,13 +56,16 @@ export class Editor {
         this._updateLineNumbers();
         this._checkUnsaved();
 
-        // Debounced auto-save & preview update
+        // Schedule a snapshot for undo (captures typing in batches)
+        this._scheduleSnapshot();
+
+        // Debounced auto-save
         clearTimeout(this._debounceTimer);
         this._debounceTimer = setTimeout(() => {
             this.app.eventBus.emit('editor:change', this.textarea.value);
-        }, 80);
+        }, 150);
 
-        // Immediate preview update for responsiveness
+        // Immediate preview update
         this.app.eventBus.emit('editor:input', this.textarea.value);
     }
 
@@ -77,65 +88,123 @@ export class Editor {
         this.lineNumbers.scrollTop = this.textarea.scrollTop;
     }
 
-    _pushUndo() {
+    // --- Undo/Redo System ---
+    // Takes a snapshot of the current state if the content changed since the last snapshot
+    _takeSnapshotIfNeeded() {
+        if (this.textarea.value !== this._lastSnapshot) {
+            this._pushSnapshot();
+        }
+    }
+
+    // Schedule a snapshot after a pause in typing (500ms)
+    _scheduleSnapshot() {
+        clearTimeout(this._snapshotTimer);
+        this._snapshotTimer = setTimeout(() => {
+            this._takeSnapshotIfNeeded();
+        }, 500);
+    }
+
+    // Push current state to undo stack
+    _pushSnapshot() {
+        const current = this.textarea.value;
+        // Don't push duplicate
+        if (this.undoStack.length > 0 && this.undoStack[this.undoStack.length - 1].value === current) {
+            return;
+        }
+        // Also don't push if it's the same as _lastSnapshot and there's no real change
+        this.undoStack.push({
+            value: this._lastSnapshot,
+            selectionStart: this.textarea.selectionStart,
+            selectionEnd: this.textarea.selectionEnd
+        });
+        if (this.undoStack.length > 200) this.undoStack.shift();
+        this.redoStack = [];
+        this._lastSnapshot = current;
+    }
+
+    // Force push before an explicit edit action (toolbar, tab, enter)
+    _pushUndoBeforeAction() {
+        // Always snapshot before an explicit action
         this.undoStack.push({
             value: this.textarea.value,
             selectionStart: this.textarea.selectionStart,
             selectionEnd: this.textarea.selectionEnd
         });
-        if (this.undoStack.length > 100) this.undoStack.shift();
+        if (this.undoStack.length > 200) this.undoStack.shift();
         this.redoStack = [];
     }
 
     undo() {
+        // First, flush any pending snapshot
+        clearTimeout(this._snapshotTimer);
+        this._takeSnapshotIfNeeded();
+
         if (this.undoStack.length === 0) return;
+
+        // Save current state to redo stack
         this.redoStack.push({
             value: this.textarea.value,
             selectionStart: this.textarea.selectionStart,
             selectionEnd: this.textarea.selectionEnd
         });
+
         const state = this.undoStack.pop();
         this.textarea.value = state.value;
         this.textarea.selectionStart = state.selectionStart;
         this.textarea.selectionEnd = state.selectionEnd;
-        this._onInput();
+        this._lastSnapshot = state.value;
+        this._updateLineNumbers();
+        this._checkUnsaved();
+        this.app.eventBus.emit('editor:input', this.textarea.value);
     }
 
     redo() {
         if (this.redoStack.length === 0) return;
+
         this.undoStack.push({
             value: this.textarea.value,
             selectionStart: this.textarea.selectionStart,
             selectionEnd: this.textarea.selectionEnd
         });
+
         const state = this.redoStack.pop();
         this.textarea.value = state.value;
         this.textarea.selectionStart = state.selectionStart;
         this.textarea.selectionEnd = state.selectionEnd;
-        this._onInput();
+        this._lastSnapshot = state.value;
+        this._updateLineNumbers();
+        this._checkUnsaved();
+        this.app.eventBus.emit('editor:input', this.textarea.value);
     }
 
     // Insert text at cursor, wrapping selection if wrap provided
     insertAtCursor(before, after = '') {
-        this._pushUndo();
+        this._pushUndoBeforeAction();
         const start = this.textarea.selectionStart;
         const end = this.textarea.selectionEnd;
-        const selected = this.textarea.value.substring(start, end);
+        const val = this.textarea.value;
+        const selected = val.substring(start, end);
         const replacement = before + selected + after;
-        this.textarea.setRangeText(replacement, start, end, 'select');
-        this.textarea.focus();
+        const newValue = val.substring(0, start) + replacement + val.substring(end);
+        this.textarea.value = newValue;
         this.textarea.selectionStart = start + before.length;
         this.textarea.selectionEnd = start + before.length + selected.length;
+        this._lastSnapshot = newValue;
+        this.textarea.focus();
         this._onInput();
     }
 
     // Insert text at current line start
     insertAtLineStart(prefix) {
-        this._pushUndo();
+        this._pushUndoBeforeAction();
         const start = this.textarea.selectionStart;
         const val = this.textarea.value;
         const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-        this.textarea.setRangeText(prefix, lineStart, lineStart, 'end');
+        const newValue = val.substring(0, lineStart) + prefix + val.substring(lineStart);
+        this.textarea.value = newValue;
+        this.textarea.selectionStart = start + prefix.length;
+        this.textarea.selectionEnd = start + prefix.length;
+        this._lastSnapshot = newValue;
         this.textarea.focus();
         this._onInput();
     }
@@ -144,22 +213,49 @@ export class Editor {
         // Tab key — indent
         if (e.key === 'Tab') {
             e.preventDefault();
-            this._pushUndo();
+            this._pushUndoBeforeAction();
             const start = this.textarea.selectionStart;
             const end = this.textarea.selectionEnd;
+            const val = this.textarea.value;
 
-            if (e.shiftKey) {
-                // Outdent
-                const val = this.textarea.value;
+            if (start !== end) {
+                // Multi-line indent/outdent
                 const lineStart = val.lastIndexOf('\n', start - 1) + 1;
-                const line = val.substring(lineStart);
-                if (line.startsWith('  ')) {
-                    this.textarea.setRangeText('', lineStart, lineStart + 2, 'end');
+                const lineEnd = val.indexOf('\n', end);
+                const endPos = lineEnd === -1 ? val.length : lineEnd;
+                const selectedLines = val.substring(lineStart, endPos);
+
+                if (e.shiftKey) {
+                    const outdented = selectedLines.replace(/^  /gm, '');
+                    const diff = selectedLines.length - outdented.length;
+                    this.textarea.value = val.substring(0, lineStart) + outdented + val.substring(endPos);
+                    this.textarea.selectionStart = start - (val.substring(lineStart, start).startsWith('  ') ? 2 : 0);
+                    this.textarea.selectionEnd = end - diff;
+                } else {
+                    const indented = selectedLines.replace(/^/gm, '  ');
+                    const diff = indented.length - selectedLines.length;
+                    this.textarea.value = val.substring(0, lineStart) + indented + val.substring(endPos);
+                    this.textarea.selectionStart = start + 2;
+                    this.textarea.selectionEnd = end + diff;
                 }
             } else {
-                // Indent
-                this.textarea.setRangeText('  ', start, start, 'end');
+                if (e.shiftKey) {
+                    // Outdent current line
+                    const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+                    const line = val.substring(lineStart);
+                    if (line.startsWith('  ')) {
+                        this.textarea.value = val.substring(0, lineStart) + val.substring(lineStart + 2);
+                        this.textarea.selectionStart = Math.max(lineStart, start - 2);
+                        this.textarea.selectionEnd = Math.max(lineStart, start - 2);
+                    }
+                } else {
+                    // Insert 2 spaces
+                    this.textarea.value = val.substring(0, start) + '  ' + val.substring(start);
+                    this.textarea.selectionStart = start + 2;
+                    this.textarea.selectionEnd = start + 2;
+                }
             }
+            this._lastSnapshot = this.textarea.value;
             this._onInput();
             return;
         }
@@ -196,6 +292,7 @@ export class Editor {
                     this.redo();
                     break;
             }
+            return;
         }
 
         // Enter key — auto-indent and continue list
@@ -212,14 +309,17 @@ export class Editor {
                 const afterMarker = currentLine.substring(listMatch[0].length).trim();
                 if (afterMarker === '') {
                     e.preventDefault();
-                    this._pushUndo();
-                    this.textarea.setRangeText('\n', lineStart, pos, 'end');
+                    this._pushUndoBeforeAction();
+                    this.textarea.value = val.substring(0, lineStart) + '\n' + val.substring(pos);
+                    this.textarea.selectionStart = lineStart + 1;
+                    this.textarea.selectionEnd = lineStart + 1;
+                    this._lastSnapshot = this.textarea.value;
                     this._onInput();
                     return;
                 }
 
                 e.preventDefault();
-                this._pushUndo();
+                this._pushUndoBeforeAction();
 
                 let nextMarker = listMatch[2];
                 // Increment number for ordered lists
@@ -229,17 +329,26 @@ export class Editor {
                 }
 
                 const insert = '\n' + listMatch[1] + nextMarker + ' ';
-                this.textarea.setRangeText(insert, pos, pos, 'end');
+                this.textarea.value = val.substring(0, pos) + insert + val.substring(pos);
+                const newPos = pos + insert.length;
+                this.textarea.selectionStart = newPos;
+                this.textarea.selectionEnd = newPos;
+                this._lastSnapshot = this.textarea.value;
                 this._onInput();
                 return;
             }
 
-            // Auto-indent
+            // Auto-indent (preserve leading whitespace)
             const indentMatch = currentLine.match(/^(\s+)/);
             if (indentMatch) {
                 e.preventDefault();
-                this._pushUndo();
-                this.textarea.setRangeText('\n' + indentMatch[1], pos, pos, 'end');
+                this._pushUndoBeforeAction();
+                const insert = '\n' + indentMatch[1];
+                this.textarea.value = val.substring(0, pos) + insert + val.substring(pos);
+                const newPos = pos + insert.length;
+                this.textarea.selectionStart = newPos;
+                this.textarea.selectionEnd = newPos;
+                this._lastSnapshot = this.textarea.value;
                 this._onInput();
             }
         }
@@ -270,5 +379,6 @@ export class Editor {
 
     destroy() {
         clearTimeout(this._debounceTimer);
+        clearTimeout(this._snapshotTimer);
     }
 }

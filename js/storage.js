@@ -27,7 +27,29 @@ export class Storage {
 
     _autoSave() {
         clearTimeout(this._debounce);
-        this._debounce = setTimeout(() => this._saveSession(), 1000);
+        this._debounce = setTimeout(() => {
+            this._saveSession();
+            this._persistActiveFile();
+        }, 1000);
+    }
+
+    /**
+     * Persist the current editor content to IndexedDB for the active file
+     */
+    async _persistActiveFile() {
+        try {
+            const ws = this.app.workspace;
+            const fm = this.app.fileManager;
+            if (!ws || !fm || !ws.activeFilePath) return;
+
+            const content = this.app.editor.getValue();
+            const file = await fm.getFile(ws.activeFilePath);
+            if (file) {
+                await fm.saveFile(file.path, file.name, file.type, content, 'file');
+            }
+        } catch (e) {
+            console.warn('Auto-persist error:', e);
+        }
     }
 
     _saveSession() {
