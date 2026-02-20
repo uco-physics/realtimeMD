@@ -1,6 +1,13 @@
 /**
  * markdown.js — Self-contained Markdown Parser
+ * Supports GFM-like features: HTML passthrough, MathJax delimiters, Mermaid blocks.
  * No external dependencies. Converts Markdown string → HTML string.
+ *
+ * Design decisions:
+ * - HTML blocks are extracted before escaping and reinserted after parsing.
+ * - Sanitization is NOT done here — it is done in preview.js via DOMPurify.
+ * - Math delimiters \( ... \) and \[ ... \] are protected from escaping.
+ * - Mermaid fenced code blocks produce <div class="mermaid">...</div> elements.
  */
 export class MarkdownParser {
   constructor(options = {}) {
@@ -14,11 +21,60 @@ export class MarkdownParser {
     // Normalize line endings
     html = html.replace(/\r\n/g, '\n');
 
-    // Escape HTML entities first (prevent XSS)
+    // === Phase 1: Extract protected blocks before HTML escaping ===
+
+    // Extract fenced code blocks (including mermaid)
+    const codeBlocks = [];
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+      const placeholder = `\x00CODEBLOCK${codeBlocks.length}\x00`;
+      codeBlocks.push({ lang, code: code.trimEnd() });
+      return placeholder;
+    });
+
+    // Extract inline code spans
+    const inlineCode = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+      const placeholder = `\x00INLINECODE${inlineCode.length}\x00`;
+      inlineCode.push(code);
+      return placeholder;
+    });
+
+    // Extract math blocks: \[ ... \] (display) — must come before inline math
+    const mathBlocks = [];
+    html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, math) => {
+      const placeholder = `\x00MATHBLOCK${mathBlocks.length}\x00`;
+      mathBlocks.push(math);
+      return placeholder;
+    });
+
+    // Extract inline math: \( ... \)
+    const inlineMath = [];
+    html = html.replace(/\\\((.+?)\\\)/g, (match, math) => {
+      const placeholder = `\x00INLINEMATH${inlineMath.length}\x00`;
+      inlineMath.push(math);
+      return placeholder;
+    });
+
+    // Extract raw HTML blocks (block-level HTML: starts with < at line beginning)
+    const htmlBlocks = [];
+    html = html.replace(/^(<(?:div|section|article|aside|header|footer|nav|main|details|summary|figure|figcaption|p|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|th|td|caption|colgroup|col|form|fieldset|legend|select|option|label|input|button|textarea|output|progress|meter|video|audio|source|picture|canvas|map|area|svg|math|del|ins|sub|sup|mark|abbr|time|cite|dfn|ruby|rt|rp|bdi|bdo|wbr|hr|br|img|a|em|strong|small|s|u|b|i|span|blockquote|pre|code)[\s>][\s\S]*?)$/gm, (match, block) => {
+      const placeholder = `\x00HTMLBLOCK${htmlBlocks.length}\x00`;
+      htmlBlocks.push(block);
+      return placeholder;
+    });
+
+    // Also extract inline HTML tags like <kbd>, <mark>, <sub>, <sup>, <br>, etc.
+    const inlineHtml = [];
+    html = html.replace(/<(\/?)(\w+)([^>]*)>/g, (match) => {
+      const placeholder = `\x00INLINEHTML${inlineHtml.length}\x00`;
+      inlineHtml.push(match);
+      return placeholder;
+    });
+
+    // === Phase 2: Escape remaining HTML entities (XSS prevention for plain text) ===
     html = this._escapeHtml(html);
 
-    // Parse block-level elements
-    html = this._parseCodeBlocks(html);
+    // === Phase 3: Parse block-level Markdown elements ===
     html = this._parseBlockquotes(html);
     html = this._parseTables(html);
     html = this._parseHorizontalRules(html);
@@ -26,13 +82,53 @@ export class MarkdownParser {
     html = this._parseLists(html);
     html = this._parseParagraphs(html);
 
-    // Parse inline elements
-    html = this._parseInlineCode(html);
+    // === Phase 4: Parse inline Markdown elements ===
     html = this._parseImages(html);
     html = this._parseLinks(html);
     html = this._parseBoldItalic(html);
     html = this._parseStrikethrough(html);
     html = this._parseLineBreaks(html);
+
+    // === Phase 5: Restore protected blocks ===
+
+    // Restore inline HTML
+    for (let i = 0; i < inlineHtml.length; i++) {
+      html = html.replace(`\x00INLINEHTML${i}\x00`, inlineHtml[i]);
+    }
+
+    // Restore HTML blocks
+    for (let i = 0; i < htmlBlocks.length; i++) {
+      html = html.replace(`\x00HTMLBLOCK${i}\x00`, htmlBlocks[i]);
+    }
+
+    // Restore inline code
+    for (let i = 0; i < inlineCode.length; i++) {
+      html = html.replace(`\x00INLINECODE${i}\x00`, `<code>${this._escapeHtml(inlineCode[i])}</code>`);
+    }
+
+    // Restore code blocks — special handling for mermaid
+    for (let i = 0; i < codeBlocks.length; i++) {
+      const { lang, code } = codeBlocks[i];
+      let replacement;
+      if (lang === 'mermaid') {
+        // Mermaid blocks: use div with class for rendering
+        replacement = `<div class="mermaid">${code}</div>`;
+      } else {
+        const langAttr = lang ? ` class="language-${lang}"` : '';
+        replacement = `<pre><code${langAttr}>${this._escapeHtml(code)}</code></pre>`;
+      }
+      html = html.replace(`\x00CODEBLOCK${i}\x00`, replacement);
+    }
+
+    // Restore display math
+    for (let i = 0; i < mathBlocks.length; i++) {
+      html = html.replace(`\x00MATHBLOCK${i}\x00`, `<div class="math-display">\\[${mathBlocks[i]}\\]</div>`);
+    }
+
+    // Restore inline math
+    for (let i = 0; i < inlineMath.length; i++) {
+      html = html.replace(`\x00INLINEMATH${i}\x00`, `<span class="math-inline">\\(${inlineMath[i]}\\)</span>`);
+    }
 
     return html.trim();
   }
@@ -51,20 +147,6 @@ export class MarkdownParser {
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"');
-  }
-
-  _parseCodeBlocks(html) {
-    // Fenced code blocks: ```lang\n...\n```
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-      const langAttr = lang ? ` class="language-${lang}"` : '';
-      return `<pre><code${langAttr}>${code.trimEnd()}</code></pre>`;
-    });
-    return html;
-  }
-
-  _parseInlineCode(html) {
-    // Inline code: `code` (but not inside <pre>)
-    return html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   }
 
   _parseBlockquotes(html) {
@@ -117,7 +199,6 @@ export class MarkdownParser {
     let i = 0;
 
     while (i < lines.length) {
-      // Detect table: current line has pipes, next line is separator
       if (
         i + 1 < lines.length &&
         /^\|(.+)\|$/.test(lines[i].trim()) &&
@@ -171,7 +252,6 @@ export class MarkdownParser {
   _parseLists(html) {
     const lines = html.split('\n');
     const result = [];
-    let listStack = []; // [{type, indent}]
     let listLines = [];
 
     const flushList = () => {
@@ -217,7 +297,6 @@ export class MarkdownParser {
     };
 
     for (const line of lines) {
-      // Checkbox list: - [x] or - [ ]
       const checkMatch = line.match(/^(\s*)-\s+\[(x| )\]\s+(.*)$/);
       if (checkMatch) {
         listLines.push({
@@ -229,7 +308,6 @@ export class MarkdownParser {
         continue;
       }
 
-      // Unordered list: - or * or +
       const ulMatch = line.match(/^(\s*)[-*+]\s+(.*)$/);
       if (ulMatch) {
         listLines.push({
@@ -240,7 +318,6 @@ export class MarkdownParser {
         continue;
       }
 
-      // Ordered list: 1. 2. etc
       const olMatch = line.match(/^(\s*)\d+\.\s+(.*)$/);
       if (olMatch) {
         listLines.push({
@@ -251,7 +328,6 @@ export class MarkdownParser {
         continue;
       }
 
-      // Not a list line
       flushList();
       result.push(line);
     }
@@ -276,13 +352,10 @@ export class MarkdownParser {
   }
 
   _parseBoldItalic(html) {
-    // Bold + Italic: ***text*** or ___text___
     html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
-    // Bold: **text** or __text__
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-    // Italic: *text* or _text_
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
     html = html.replace(/_(.+?)_/g, '<em>$1</em>');
     return html;
@@ -297,8 +370,12 @@ export class MarkdownParser {
     return lines.map(block => {
       block = block.trim();
       if (!block) return '';
-      // Don't wrap block-level elements in <p>
-      if (/^<(h[1-6]|ul|ol|li|blockquote|pre|table|thead|tbody|tr|th|td|hr|div|p)[\s>]/i.test(block)) {
+      // Don't wrap block-level elements or placeholders in <p>
+      if (/^<(h[1-6]|ul|ol|li|blockquote|pre|table|thead|tbody|tr|th|td|hr|div|p|section|article|aside|header|footer|nav|main|details|summary|figure|figcaption)[\s>]/i.test(block)) {
+        return block;
+      }
+      // Don't wrap placeholder tokens
+      if (/^\x00/.test(block)) {
         return block;
       }
       return `<p>${block}</p>`;
@@ -306,7 +383,6 @@ export class MarkdownParser {
   }
 
   _parseLineBreaks(html) {
-    // Two trailing spaces or backslash at end of line → <br>
     html = html.replace(/  \n/g, '<br>\n');
     html = html.replace(/\\\n/g, '<br>\n');
     return html;

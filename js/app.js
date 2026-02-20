@@ -226,6 +226,39 @@ class App {
         document.getElementById('ribbon-pdf')?.addEventListener('click', () => {
             this._savePreviewAsPdf();
         });
+
+        // Reset session
+        document.getElementById('ribbon-reset')?.addEventListener('click', () => {
+            this._showResetDialog();
+        });
+    }
+
+    _bindMobileActionBar() {
+        // Mobile action bar mirrors key ribbon actions
+        document.getElementById('mob-theme')?.addEventListener('click', () => {
+            this._toggleTheme();
+        });
+        document.getElementById('mob-pdf')?.addEventListener('click', () => {
+            this._savePreviewAsPdf();
+        });
+        document.getElementById('mob-zip')?.addEventListener('click', () => {
+            this._exportAsZip();
+        });
+        document.getElementById('mob-reset')?.addEventListener('click', () => {
+            this._showResetDialog();
+        });
+
+        // Mobile language selector
+        const mobLang = document.getElementById('mob-lang');
+        if (mobLang) {
+            mobLang.value = getLang();
+            mobLang.addEventListener('change', () => {
+                setLang(mobLang.value);
+                // Sync desktop selector too
+                const desktopLang = document.getElementById('ribbon-lang');
+                if (desktopLang) desktopLang.value = mobLang.value;
+            });
+        }
     }
 
     _bindStatusBar() {
@@ -318,7 +351,6 @@ class App {
         const saved = localStorage.getItem(THEME_KEY);
         const theme = (saved === 'light' || saved === 'dark') ? saved : 'dark';
         document.documentElement.setAttribute('data-theme', theme);
-        // No need to persist default — only persist on toggle
     }
 
     _toggleTheme() {
@@ -327,6 +359,23 @@ class App {
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem(THEME_KEY, next);
         this.extensions.runHook('onThemeChange', { theme: next });
+
+        // Re-initialize mermaid with new theme
+        if (typeof mermaid !== 'undefined') {
+            try {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: next === 'light' ? 'default' : 'dark',
+                    securityLevel: 'strict'
+                });
+            } catch (e) { /* ignore */ }
+            // Force re-render of preview to pick up new mermaid theme
+            if (this.preview?._currentMd) {
+                this.preview._mermaidCache.clear();
+                this.preview.render(this.preview._currentMd);
+            }
+        }
+
         this.showToast(t(next === 'dark' ? 'toast.themeDark' : 'toast.themeLight'), 'info');
     }
 
@@ -341,6 +390,9 @@ class App {
 
         select.addEventListener('change', () => {
             setLang(select.value);
+            // Sync mobile selector
+            const mobLang = document.getElementById('mob-lang');
+            if (mobLang) mobLang.value = select.value;
         });
     }
 
@@ -401,8 +453,58 @@ class App {
         }, 300);
     }
 
+    // ========== Reset Session ==========
+
+    _showResetDialog() {
+        const overlay = document.getElementById('reset-dialog-overlay');
+        if (!overlay) return;
+        overlay.classList.add('visible');
+
+        const cancelBtn = document.getElementById('reset-cancel');
+        const confirmBtn = document.getElementById('reset-confirm');
+
+        const cleanup = () => {
+            overlay.classList.remove('visible');
+            cancelBtn?.removeEventListener('click', onCancel);
+            confirmBtn?.removeEventListener('click', onConfirm);
+        };
+
+        const onCancel = () => cleanup();
+        const onConfirm = async () => {
+            cleanup();
+            await this._resetSession();
+        };
+
+        cancelBtn?.addEventListener('click', onCancel);
+        confirmBtn?.addEventListener('click', onConfirm);
+
+        // Also close on overlay click (outside dialog)
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) cleanup();
+        }, { once: true });
+    }
+
+    async _resetSession() {
+        try {
+            // Clear session data from localStorage (keep theme + language preferences)
+            localStorage.removeItem('realtimemd-session');
+
+            // Clear IndexedDB (virtual filesystem)
+            if (this.fileManager) {
+                await this.fileManager.clearAll();
+            }
+
+            // Reload to reset all in-memory state
+            location.reload();
+        } catch (e) {
+            console.error('Reset session error:', e);
+            // Fallback: force reload anyway
+            location.reload();
+        }
+    }
+
     _bindMobile() {
-        // Nothing extra — CSS handles layout
+        this._bindMobileActionBar();
     }
 
     showToast(message, type = 'info') {

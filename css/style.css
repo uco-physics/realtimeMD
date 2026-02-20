@@ -1183,6 +1183,16 @@ a:hover {
   .desktop-only {
     display: none !important;
   }
+
+  /* Show mobile action bar */
+  .mobile-action-bar {
+    display: flex !important;
+  }
+
+  /* Add bottom padding so mobile action bar doesn't cover content */
+  .statusbar {
+    margin-bottom: 44px;
+  }
 }
 
 @media (min-width: 768px) {
@@ -1195,6 +1205,10 @@ a:hover {
   }
 
   .mobile-only {
+    display: none !important;
+  }
+
+  .mobile-action-bar {
     display: none !important;
   }
 }
@@ -1281,6 +1295,7 @@ a:hover {
 
 /* --- Print Stylesheet (PDF Export) --- */
 @media print {
+
   /* Hide everything except the preview content */
   .toolbar,
   .ribbon,
@@ -1299,7 +1314,8 @@ a:hover {
   }
 
   /* Reset layout for print */
-  body, html {
+  body,
+  html {
     background: white !important;
     color: black !important;
     margin: 0;
@@ -1399,4 +1415,197 @@ a:hover {
   .preview-content th {
     background: #f0f0f0 !important;
   }
+
+  /* Print: show mermaid SVGs and MathJax output */
+  .preview-content .mermaid svg {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  .preview-content .math-display,
+  .preview-content .math-inline {
+    color: black !important;
+  }
+
+  /* Hide mobile action bar in print */
+  .mobile-action-bar {
+    display: none !important;
+  }
+
+  /* Hide dialog overlay in print */
+  .dialog-overlay {
+    display: none !important;
+  }
 }
+
+/* --- Mobile Action Bar --- */
+.mobile-action-bar {
+  display: none;
+  /* Hidden by default; shown via media query on mobile */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
+  z-index: 300;
+  align-items: center;
+  justify-content: space-around;
+  gap: var(--space-1);
+}
+
+.mob-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 9px;
+  font-family: var(--font-sans);
+  transition: color var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mob-action-btn:active {
+  color: var(--color-accent);
+}
+
+.mob-action-btn svg {
+  flex-shrink: 0;
+}
+
+.mob-lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  padding: 2px 4px;
+  cursor: pointer;
+  text-align: center;
+  width: 36px;
+}
+
+.mob-lang-select option {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+/* --- Dialog Overlay --- */
+.dialog-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-overlay.visible {
+  display: flex;
+}
+
+.dialog-box {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  max-width: 420px;
+  width: 90vw;
+  box-shadow: var(--shadow-lg);
+}
+
+.dialog-box h3 {
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.dialog-box p {
+  margin: 0 0 var(--space-5) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.dialog-btn {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-fast);
+}
+
+.dialog-btn-cancel {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.dialog-btn-cancel:hover {
+  background: var(--color-bg-active);
+}
+
+.dialog-btn-danger {
+  background: var(--color-accent-red);
+  color: #fff;
+  border-color: var(--color-accent-red);
+}
+
+.dialog-btn-danger:hover {
+  opacity: 0.9;
+}
+
+/* --- Mermaid Diagrams --- */
+.preview-content .mermaid {
+  text-align: center;
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.preview-content .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.preview-content .mermaid-error {
+  color: var(--color-accent-red);
+  font-size: var(--font-size-sm);
+  background: var(--color-bg-surface);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-accent-red);
+  white-space: pre-wrap;
+}
+
+/* --- Math Blocks --- */
+.preview-content .math-display {
+  text-align: center;
+  margin: var(--space-4) 0;
+  overflow-x: auto;
+}
+
+/* Math inline styling handled by MathJax */

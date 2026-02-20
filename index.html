@@ -289,6 +289,15 @@
               <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
           </button>
+          <button id="ribbon-reset" class="ribbon-btn" data-i18n-title="ribbon.reset" data-i18n-aria="ribbon.reset"
+            title="Reset Session" aria-label="Reset Session">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </button>
           <!-- Language Selector -->
           <select id="ribbon-lang" class="ribbon-lang-select" data-i18n-title="ribbon.language" title="Language"
             aria-label="Language">
@@ -427,9 +436,102 @@
     <!-- Extension Slot: Footer -->
     <div id="ext-slot-footer" class="extension-slot"></div>
 
+    <!-- Mobile Action Bar (visible only on mobile via CSS) -->
+    <div id="mobile-action-bar" class="mobile-action-bar">
+      <button id="mob-theme" class="mob-action-btn" data-i18n-aria="ribbon.theme" aria-label="Toggle Theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+        </svg>
+        <span data-i18n="mobile.theme">Theme</span>
+      </button>
+      <button id="mob-pdf" class="mob-action-btn" data-i18n-aria="ribbon.pdf" aria-label="Save Preview as PDF">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="9" y1="15" x2="15" y2="15" />
+        </svg>
+        <span data-i18n="mobile.pdf">PDF</span>
+      </button>
+      <button id="mob-zip" class="mob-action-btn" data-i18n-aria="ribbon.exportZip" aria-label="Export as ZIP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" />
+          <polyline points="9 12 12 15 15 12" />
+          <line x1="12" y1="8" x2="12" y2="15" />
+        </svg>
+        <span data-i18n="mobile.zip">ZIP</span>
+      </button>
+      <button id="mob-reset" class="mob-action-btn" data-i18n-aria="ribbon.reset" aria-label="Reset Session">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </svg>
+        <span data-i18n="mobile.reset">Reset</span>
+      </button>
+      <select id="mob-lang" class="mob-lang-select" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="ja">JA</option>
+        <option value="zh">ZH</option>
+        <option value="hi">HI</option>
+      </select>
+    </div>
+
+    <!-- Reset Confirmation Dialog -->
+    <div id="reset-dialog-overlay" class="dialog-overlay">
+      <div class="dialog-box">
+        <h3 data-i18n="dialog.resetTitle">Reset session?</h3>
+        <p data-i18n="dialog.resetMessage">This will clear your current session data (open files, workspace state,
+          preferences for this session). This cannot be undone. Continue?</p>
+        <div class="dialog-actions">
+          <button id="reset-cancel" class="dialog-btn dialog-btn-cancel" data-i18n="dialog.cancel">Cancel</button>
+          <button id="reset-confirm" class="dialog-btn dialog-btn-danger" data-i18n="dialog.reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- JSZip for workspace ZIP export (lightweight, from CDN) -->
+  <!-- DOMPurify (HTML sanitization) -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js" defer></script>
+
+  <!-- MathJax (math rendering with \( \) and \[ \] delimiters) -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']]
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      },
+      startup: {
+        typeset: false
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+
+  <!-- Mermaid (diagram rendering) -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
+  <script>
+    // Initialize mermaid after script loads (defer means it loads after DOM but we use load event)
+    window.addEventListener('load', function () {
+      if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark',
+          securityLevel: 'strict'
+        });
+      }
+    });
+  </script>
+
+  <!-- JSZip for workspace ZIP export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
 
   <script type="module" src="js/app.js"></script>
