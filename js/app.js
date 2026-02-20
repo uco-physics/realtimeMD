@@ -8,6 +8,7 @@ import { FileManager } from './filemanager.js';
 import { Workspace } from './workspace.js';
 import { Storage } from './storage.js';
 import { ExtensionManager } from './extensions.js';
+import { initI18n, setLang, getLang, t, applyTranslations } from './i18n.js';
 
 /* ---- Simple Event Bus ---- */
 class EventBus {
@@ -28,6 +29,8 @@ class EventBus {
     }
 }
 
+const THEME_KEY = 'realtimemd-theme';
+
 /* ---- App ---- */
 class App {
     constructor() {
@@ -42,6 +45,9 @@ class App {
     }
 
     async init() {
+        // Init i18n first (reads localStorage, applies translations)
+        initI18n();
+
         // Init file manager first (needs IndexedDB ready)
         this.fileManager = new FileManager(this);
         await this.fileManager.ready();
@@ -60,7 +66,8 @@ class App {
         this._bindStatusBar();
         this._bindEditorEvents();
         this._bindResizeHandle();
-        this._bindTheme();
+        this._initTheme();
+        this._initLangSelector();
         this._bindMobile();
 
         // Restore session or initialize fresh
@@ -84,6 +91,9 @@ class App {
 
         // Update status bar
         this._updateStatusBar();
+
+        // Re-apply translations (some elements may have been created dynamically)
+        applyTranslations();
 
         console.log('RealtimeMD initialized');
     }
@@ -199,12 +209,22 @@ class App {
             this._toggleTheme();
         });
 
-        // Export/Import
+        // Export/Import (JSON)
         document.getElementById('ribbon-export')?.addEventListener('click', () => {
             this.storage.exportWorkspace();
         });
         document.getElementById('ribbon-import')?.addEventListener('click', () => {
             this.storage.importWorkspace();
+        });
+
+        // Export as ZIP
+        document.getElementById('ribbon-export-zip')?.addEventListener('click', () => {
+            this._exportAsZip();
+        });
+
+        // Save preview as PDF
+        document.getElementById('ribbon-pdf')?.addEventListener('click', () => {
+            this._savePreviewAsPdf();
         });
     }
 
@@ -292,18 +312,93 @@ class App {
         document.addEventListener('touchend', onMouseUp);
     }
 
-    _bindTheme() {
-        if (!document.documentElement.getAttribute('data-theme')) {
-            document.documentElement.setAttribute('data-theme', 'dark');
-        }
+    // ========== Theme ==========
+
+    _initTheme() {
+        const saved = localStorage.getItem(THEME_KEY);
+        const theme = (saved === 'light' || saved === 'dark') ? saved : 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+        // No need to persist default — only persist on toggle
     }
 
     _toggleTheme() {
         const current = document.documentElement.getAttribute('data-theme');
         const next = current === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem(THEME_KEY, next);
         this.extensions.runHook('onThemeChange', { theme: next });
-        this.showToast(`テーマ: ${next === 'dark' ? 'ダーク' : 'ライト'}`, 'info');
+        this.showToast(t(next === 'dark' ? 'toast.themeDark' : 'toast.themeLight'), 'info');
+    }
+
+    // ========== Language Selector ==========
+
+    _initLangSelector() {
+        const select = document.getElementById('ribbon-lang');
+        if (!select) return;
+
+        // Set current value
+        select.value = getLang();
+
+        select.addEventListener('change', () => {
+            setLang(select.value);
+        });
+    }
+
+    // ========== Export as ZIP ==========
+
+    async _exportAsZip() {
+        if (typeof JSZip === 'undefined') {
+            this.showToast(t('toast.exportZipError') + ' (JSZip not loaded)', 'error');
+            return;
+        }
+
+        try {
+            const zip = new JSZip();
+            const files = await this.fileManager.getAllFiles();
+
+            for (const file of files) {
+                if (file.kind === 'directory') continue;
+
+                // Remove leading slash for zip path
+                const zipPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+
+                if (file.content instanceof ArrayBuffer) {
+                    zip.file(zipPath, file.content);
+                } else if (typeof file.content === 'string') {
+                    zip.file(zipPath, file.content);
+                }
+            }
+
+            const now = new Date();
+            const dateStr = now.getFullYear().toString() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0');
+            const fileName = `realtimeMD-workspace-${dateStr}.zip`;
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            this.showToast(t('toast.exportZipOk'), 'success');
+        } catch (err) {
+            console.error('ZIP export failed:', err);
+            this.showToast(t('toast.exportZipError'), 'error');
+        }
+    }
+
+    // ========== Save Preview as PDF ==========
+
+    _savePreviewAsPdf() {
+        this.showToast(t('toast.pdfInfo'), 'info');
+
+        // Short delay to let toast appear, then trigger print
+        setTimeout(() => {
+            window.print();
+        }, 300);
     }
 
     _bindMobile() {
@@ -328,37 +423,38 @@ class App {
     _getDefaultContent() {
         return `# Welcome to RealtimeMD ✨
 
-リアルタイムMarkdownエディターへようこそ！
+A real-time Markdown editor in your browser!
 
 ## Features
 
-- **リアルタイムプレビュー** — 入力と同時にレンダリング
-- **仮想ワークスペース** — 左のサイドバーからファイルを管理
-- **画像アップロード** — ドラッグ&ドロップでファイルをアップロード
-- **セッション保存** — ブラウザを閉じてもデータが残る
-- **テーマ切替** — ダーク / ライトモード対応
+- **Live Preview** — Renders as you type
+- **Virtual Workspace** — Manage files from the sidebar
+- **Image Upload** — Drag & drop to upload files
+- **Session Persistence** — Data survives browser close
+- **Theme Toggle** — Dark / Light mode
+- **Language Switcher** — EN / JA / ZH / HI
 
 ## Markdown Syntax
 
-### テキスト装飾
+### Text Formatting
 
-**太字** / *斜体* / ~~取り消し線~~ / \`インラインコード\`
+**Bold** / *Italic* / ~~Strikethrough~~ / \`Inline Code\`
 
-### リスト
+### Lists
 
-- 箇条書き1
-- 箇条書き2
-  - ネスト
+- Bullet item 1
+- Bullet item 2
+  - Nested
 
-1. 番号付き1
-2. 番号付き2
+1. Numbered 1
+2. Numbered 2
 
-### チェックリスト
+### Checklist
 
-- [x] 完了タスク
-- [ ] 未完了タスク
+- [x] Completed task
+- [ ] Pending task
 
-### コードブロック
+### Code Block
 
 \`\`\`javascript
 function hello() {
@@ -366,22 +462,22 @@ function hello() {
 }
 \`\`\`
 
-### テーブル
+### Table
 
-| 機能 | 状態 |
+| Feature | Status |
 | --- | --- |
-| エディター | ✅ |
-| プレビュー | ✅ |
-| ファイル管理 | ✅ |
+| Editor | ✅ |
+| Preview | ✅ |
+| File Manager | ✅ |
 
-### 引用
+### Blockquote
 
-> これは引用文です。
-> 複数行対応。
+> This is a blockquote.
+> Supports multiple lines.
 
 ---
 
-キーボードショートカット: **Ctrl+B** (太字), **Ctrl+I** (斜体), **Ctrl+K** (リンク), **Ctrl+S** (保存)
+Keyboard shortcuts: **Ctrl+B** (Bold), **Ctrl+I** (Italic), **Ctrl+K** (Link), **Ctrl+S** (Save)
 `;
     }
 }

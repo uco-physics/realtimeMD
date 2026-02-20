@@ -3,6 +3,7 @@
  * Full-featured: inline rename, context menu, drag-and-drop, file operations
  */
 import { computeRelativePath, isImageFile } from './pathutils.js';
+import { t } from './i18n.js';
 
 export class Workspace {
     constructor(app) {
@@ -124,7 +125,7 @@ export class Workspace {
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
       </svg>
-      <p style="font-size:0.75rem;color:var(--color-text-muted)">ファイルがありません<br>上のボタンからファイルを作成するか、<br>ドラッグ&ドロップでアップロード</p>
+      <p style="font-size:0.75rem;color:var(--color-text-muted)">${t('sidebar.empty')}<br>${t('sidebar.emptyHint').replace(/\n/g, '<br>')}</p>
     `;
         this.fileTreeEl.appendChild(el);
     }
@@ -258,7 +259,7 @@ export class Workspace {
         this.expandedDirs.clear();
         this.expandedDirs.add('/'); // Keep root
         this.refresh();
-        this.app.showToast('フォルダを全て折りたたみました', 'info');
+        this.app.showToast(t('toast.collapsed'), 'info');
     }
 
     // ========== File Open ==========
@@ -280,7 +281,7 @@ export class Workspace {
             this.app.editor.setFileName(item.name);
             this.app.editor.markSaved();
         } else {
-            this.app.showToast(`バイナリファイルは編集できません: ${item.name}`, 'info');
+            this.app.showToast(t('toast.binaryNotEditable', { name: item.name }), 'info');
         }
 
         this.refresh();
@@ -439,7 +440,7 @@ export class Workspace {
         // Check if target already exists
         const existing = await fm.getFile(newPath);
         if (existing && existing.path !== item.path) {
-            this.app.showToast(`"${newName}" は既に存在します`, 'error');
+            this.app.showToast(t('toast.existsError', { name: newName }), 'error');
             return;
         }
 
@@ -467,7 +468,7 @@ export class Workspace {
 
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast(`"${newName}" にリネームしました`, 'success');
+        this.app.showToast(t('toast.renamed', { name: newName }), 'success');
     }
 
     // ========== Upload / Drop ==========
@@ -502,7 +503,7 @@ export class Workspace {
 
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast(`${items.length}個のファイルをアップロードしました`, 'success');
+        this.app.showToast(t('toast.uploaded', { count: items.length }), 'success');
     }
 
     async _processFiles(files, parentPath) {
@@ -588,7 +589,7 @@ export class Workspace {
         await fm.saveFile(newPath, newName, file.type, file.content, 'file');
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast(`"${newName}" を作成しました`, 'success');
+        this.app.showToast(t('toast.duplicated', { name: newName }), 'success');
     }
 
     // ========== Download ==========
@@ -608,7 +609,7 @@ export class Workspace {
         a.download = item.name;
         a.click();
         URL.revokeObjectURL(url);
-        this.app.showToast(`"${item.name}" をダウンロードしました`, 'success');
+        this.app.showToast(t('toast.downloaded', { name: item.name }), 'success');
     }
 
     // ========== Copy Path ==========
@@ -618,11 +619,10 @@ export class Workspace {
         if (!item) return;
 
         navigator.clipboard.writeText(item.path).then(() => {
-            this.app.showToast('パスをコピーしました', 'info');
+            this.app.showToast(t('toast.pathCopied'), 'info');
         }).catch(() => {
-            // Fallback
             this._fallbackCopy(item.path);
-            this.app.showToast('パスをコピーしました', 'info');
+            this.app.showToast(t('toast.pathCopied'), 'info');
         });
     }
 
@@ -638,10 +638,10 @@ export class Workspace {
         );
 
         navigator.clipboard.writeText(relativePath).then(() => {
-            this.app.showToast('相対パスをコピーしました', 'info');
+            this.app.showToast(t('toast.relativePathCopied'), 'info');
         }).catch(() => {
             this._fallbackCopy(relativePath);
-            this.app.showToast('相対パスをコピーしました', 'info');
+            this.app.showToast(t('toast.relativePathCopied'), 'info');
         });
     }
 
@@ -658,10 +658,10 @@ export class Workspace {
         const mdImage = `![${item.name}](${relativePath})`;
 
         navigator.clipboard.writeText(mdImage).then(() => {
-            this.app.showToast('Markdown画像をコピーしました', 'info');
+            this.app.showToast(t('toast.mdImageCopied'), 'info');
         }).catch(() => {
             this._fallbackCopy(mdImage);
-            this.app.showToast('Markdown画像をコピーしました', 'info');
+            this.app.showToast(t('toast.mdImageCopied'), 'info');
         });
     }
 
@@ -682,8 +682,8 @@ export class Workspace {
         const item = this._contextTarget;
         if (!item) return;
 
-        const itemType = item.kind === 'directory' ? 'フォルダ' : 'ファイル';
-        if (!confirm(`${itemType}「${item.name}」を削除しますか？`)) return;
+        const itemType = item.kind === 'directory' ? t('dialog.folderType') : t('dialog.fileType');
+        if (!confirm(t('dialog.deleteConfirm', { type: itemType, name: item.name }))) return;
 
         const fm = this.app.fileManager;
         await fm.deleteFile(item.path);
@@ -707,7 +707,7 @@ export class Workspace {
 
         await this.refresh();
         this.app.eventBus.emit('files:changed');
-        this.app.showToast(`「${item.name}」を削除しました`, 'info');
+        this.app.showToast(t('toast.deleted', { name: item.name }), 'info');
     }
 
     // ========== Save Current File ==========
@@ -726,7 +726,7 @@ export class Workspace {
             this.app.editor.markSaved();
             await this.refresh();
             this.app.eventBus.emit('files:changed');
-            this.app.showToast('保存しました', 'success');
+            this.app.showToast(t('toast.saved'), 'success');
             return;
         }
 
@@ -734,7 +734,7 @@ export class Workspace {
         if (file) {
             await fm.saveFile(file.path, file.name, file.type, content, 'file');
             this.app.editor.markSaved();
-            this.app.showToast('保存しました', 'success');
+            this.app.showToast(t('toast.saved'), 'success');
         } else {
             // File was deleted but path still set — recreate
             const name = this.activeFilePath.split('/').pop();

@@ -2,6 +2,7 @@
  * storage.js — Session Persistence & Workspace Export/Import
  * Uses localStorage for editor state and IndexedDB (via FileManager) for files.
  */
+import { t } from './i18n.js';
 const STORAGE_KEY = 'realtimemd-session';
 const SESSION_VERSION = 1;
 
@@ -152,7 +153,7 @@ export class Storage {
         a.click();
 
         URL.revokeObjectURL(url);
-        this.app.showToast('ワークスペースをエクスポートしました', 'success');
+        this.app.showToast(t('toast.exportOk'), 'success');
     }
 
     /**
@@ -172,14 +173,14 @@ export class Storage {
                 const data = JSON.parse(text);
 
                 if (!data.version || !data.files) {
-                    this.app.showToast('無効なワークスペースファイルです', 'error');
+                    this.app.showToast(t('toast.invalidWorkspace'), 'error');
                     return;
                 }
 
                 const fm = this.app.fileManager;
 
                 // Ask if user wants to merge or replace
-                const replace = confirm('現在のワークスペースを置き換えますか？\n「OK」→ 置き換え | 「キャンセル」→ マージ');
+                const replace = confirm(t('dialog.replaceOrMerge'));
 
                 if (replace) {
                     await fm.clearAll();
@@ -207,10 +208,10 @@ export class Storage {
 
                 await this.app.workspace?.refresh();
                 this.app.eventBus.emit('files:changed');
-                this.app.showToast('ワークスペースをインポートしました', 'success');
+                this.app.showToast(t('toast.importOk'), 'success');
             } catch (e) {
                 console.error('Import error:', e);
-                this.app.showToast('インポートに失敗しました', 'error');
+                this.app.showToast(t('toast.importError'), 'error');
             }
         };
 

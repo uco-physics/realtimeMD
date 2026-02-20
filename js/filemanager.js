@@ -6,6 +6,16 @@ const DB_NAME = 'realtimemd-workspace';
 const DB_VERSION = 1;
 const STORE_FILES = 'files';
 
+/** Map file extension to MIME type for common image formats */
+const IMAGE_MIME_MAP = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml'
+};
+
 export class FileManager {
     constructor(app) {
         this.app = app;
@@ -48,6 +58,15 @@ export class FileManager {
      */
     async saveFile(path, name, type, content, kind = 'file') {
         await this._ready;
+
+        // Infer image MIME type from extension if not provided
+        if (kind === 'file' && content && (!type || !type.startsWith('image/'))) {
+            const ext = (name || path).split('.').pop().toLowerCase();
+            if (IMAGE_MIME_MAP[ext]) {
+                type = IMAGE_MIME_MAP[ext];
+            }
+        }
+
         return new Promise((resolve, reject) => {
             const tx = this.db.transaction(STORE_FILES, 'readwrite');
             const store = tx.objectStore(STORE_FILES);
@@ -221,8 +240,16 @@ export class FileManager {
     async initBlobUrls() {
         const files = await this.getAllFiles();
         for (const file of files) {
-            if (file.kind === 'file' && file.type && file.type.startsWith('image/') && file.content) {
-                this._createBlobUrl(file.path, file.content, file.type);
+            if (file.kind === 'file' && file.content) {
+                let type = file.type;
+                // Infer type from extension if missing
+                if (!type || !type.startsWith('image/')) {
+                    const ext = (file.name || file.path).split('.').pop().toLowerCase();
+                    if (IMAGE_MIME_MAP[ext]) type = IMAGE_MIME_MAP[ext];
+                }
+                if (type && type.startsWith('image/')) {
+                    this._createBlobUrl(file.path, file.content, type);
+                }
             }
         }
     }

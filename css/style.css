@@ -1245,3 +1245,158 @@ a:hover {
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
 }
+
+/* --- Language Selector (Ribbon) --- */
+.ribbon-lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-sans);
+  padding: 2px 4px;
+  cursor: pointer;
+  text-align: center;
+  width: 38px;
+  margin: 0 auto;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.ribbon-lang-select:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+.ribbon-lang-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.ribbon-lang-select option {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+/* --- Print Stylesheet (PDF Export) --- */
+@media print {
+  /* Hide everything except the preview content */
+  .toolbar,
+  .ribbon,
+  .sidebar,
+  .sidebar-backdrop,
+  .editor-pane,
+  .resize-handle,
+  .statusbar,
+  .drop-zone-overlay,
+  .toast-container,
+  .context-menu,
+  .extension-slot,
+  .pane-header,
+  #btn-mobile-menu {
+    display: none !important;
+  }
+
+  /* Reset layout for print */
+  body, html {
+    background: white !important;
+    color: black !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  #app {
+    display: block !important;
+  }
+
+  .main-container {
+    display: block !important;
+    padding: 0 !important;
+  }
+
+  .workspace {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .editor-preview-container {
+    display: block !important;
+    height: auto !important;
+  }
+
+  .preview-pane {
+    display: block !important;
+    flex: unset !important;
+    width: 100% !important;
+    height: auto !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  .preview-wrapper {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .preview-content {
+    padding: 20px !important;
+    max-width: 100% !important;
+    color: black !important;
+    background: white !important;
+    font-size: 12pt !important;
+    line-height: 1.6 !important;
+  }
+
+  .preview-content h1,
+  .preview-content h2,
+  .preview-content h3 {
+    color: #111 !important;
+  }
+
+  .preview-content a {
+    color: #1e66f5 !important;
+    text-decoration: underline !important;
+  }
+
+  .preview-content code {
+    background: #f0f0f0 !important;
+    color: #333 !important;
+    border: 1px solid #ddd !important;
+  }
+
+  .preview-content pre {
+    background: #f5f5f5 !important;
+    border: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+
+  .preview-content pre code {
+    border: none !important;
+  }
+
+  .preview-content blockquote {
+    border-left-color: #999 !important;
+    color: #555 !important;
+  }
+
+  .preview-content img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  .preview-content table {
+    border-collapse: collapse !important;
+  }
+
+  .preview-content th,
+  .preview-content td {
+    border: 1px solid #ccc !important;
+    color: #333 !important;
+  }
+
+  .preview-content th {
+    background: #f0f0f0 !important;
+  }
+}
