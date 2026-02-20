@@ -3,6 +3,7 @@
  * Renders Markdown to HTML in real-time with scroll sync and image resolution.
  */
 import { MarkdownParser } from './markdown.js';
+import { resolveRelativeAssetPath } from './pathutils.js';
 
 export class Preview {
     constructor(app) {
@@ -30,18 +31,23 @@ export class Preview {
     }
 
     _resolveImage(src) {
-        // If it's an absolute URL, return directly
+        // If it's an absolute URL or data URI, return directly
         if (/^https?:\/\//.test(src) || src.startsWith('data:')) {
             return src;
         }
 
-        // Try to resolve from virtual filesystem
+        // Resolve relative path against active Markdown file's directory
+        const activePath = this.app.workspace?.getActiveFilePath() || '/';
+        const resolvedPath = resolveRelativeAssetPath(activePath, src);
+
+        // Try to find a blob URL for the resolved virtual path
         const fileManager = this.app.fileManager;
         if (fileManager) {
-            const blobUrl = fileManager.getBlobUrl(src);
+            const blobUrl = fileManager.getBlobUrl(resolvedPath);
             if (blobUrl) return blobUrl;
         }
 
+        // Graceful fallback — return resolved path (will show broken image, no crash)
         return src;
     }
 

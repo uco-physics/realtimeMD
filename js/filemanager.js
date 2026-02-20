@@ -203,15 +203,15 @@ export class FileManager {
         let normalized = srcPath.replace(/^\.\//, '');
         if (!normalized.startsWith('/')) normalized = '/' + normalized;
 
-        // Check direct match
+        // Check exact path match (preferred)
         if (this.blobUrls.has(normalized)) {
             return this.blobUrls.get(normalized);
         }
 
-        // Match by filename only
+        // Fallback: match by filename only (backward compat for flat workspaces)
+        const srcFileName = normalized.split('/').pop();
         for (const [path, url] of this.blobUrls) {
             const fileName = path.split('/').pop();
-            const srcFileName = normalized.split('/').pop();
             if (fileName === srcFileName) return url;
         }
 

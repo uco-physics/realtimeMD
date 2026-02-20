@@ -2,6 +2,8 @@
  * workspace.js — VSCode-like Virtual Workspace / File Explorer Sidebar
  * Full-featured: inline rename, context menu, drag-and-drop, file operations
  */
+import { computeRelativePath, isImageFile } from './pathutils.js';
+
 export class Workspace {
     constructor(app) {
         this.app = app;
@@ -84,6 +86,8 @@ export class Workspace {
         this._bindContextMenuItem('ctx-duplicate', () => this._duplicateItem());
         this._bindContextMenuItem('ctx-download', () => this._downloadItem());
         this._bindContextMenuItem('ctx-copy-path', () => this._copyPath());
+        this._bindContextMenuItem('ctx-copy-relative-path', () => this._copyRelativePath());
+        this._bindContextMenuItem('ctx-copy-md-image', () => this._copyAsMarkdownImage());
     }
 
     _bindContextMenuItem(id, handler) {
@@ -541,14 +545,23 @@ export class Workspace {
         const newFolderBtn = document.getElementById('ctx-new-folder');
         const downloadBtn = document.getElementById('ctx-download');
 
+        // New context menu elements
+        const copyRelativeBtn = document.getElementById('ctx-copy-relative-path');
+        const copyMdImageBtn = document.getElementById('ctx-copy-md-image');
+
         if (item.kind === 'directory') {
             newFileBtn && (newFileBtn.style.display = '');
             newFolderBtn && (newFolderBtn.style.display = '');
             downloadBtn && (downloadBtn.style.display = 'none');
+            copyRelativeBtn && (copyRelativeBtn.style.display = 'none');
+            copyMdImageBtn && (copyMdImageBtn.style.display = 'none');
         } else {
             newFileBtn && (newFileBtn.style.display = 'none');
             newFolderBtn && (newFolderBtn.style.display = 'none');
             downloadBtn && (downloadBtn.style.display = '');
+            copyRelativeBtn && (copyRelativeBtn.style.display = '');
+            // Only show "Copy as Markdown image" for image files
+            copyMdImageBtn && (copyMdImageBtn.style.display = isImageFile(item.name) ? '' : 'none');
         }
     }
 
@@ -608,14 +621,59 @@ export class Workspace {
             this.app.showToast('パスをコピーしました', 'info');
         }).catch(() => {
             // Fallback
-            const ta = document.createElement('textarea');
-            ta.value = item.path;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            ta.remove();
+            this._fallbackCopy(item.path);
             this.app.showToast('パスをコピーしました', 'info');
         });
+    }
+
+    // ========== Copy Relative Path ==========
+
+    _copyRelativePath() {
+        const item = this._contextTarget;
+        if (!item) return;
+
+        const relativePath = computeRelativePath(
+            this.activeFilePath || '/',
+            item.path
+        );
+
+        navigator.clipboard.writeText(relativePath).then(() => {
+            this.app.showToast('相対パスをコピーしました', 'info');
+        }).catch(() => {
+            this._fallbackCopy(relativePath);
+            this.app.showToast('相対パスをコピーしました', 'info');
+        });
+    }
+
+    // ========== Copy as Markdown Image ==========
+
+    _copyAsMarkdownImage() {
+        const item = this._contextTarget;
+        if (!item) return;
+
+        const relativePath = computeRelativePath(
+            this.activeFilePath || '/',
+            item.path
+        );
+        const mdImage = `![${item.name}](${relativePath})`;
+
+        navigator.clipboard.writeText(mdImage).then(() => {
+            this.app.showToast('Markdown画像をコピーしました', 'info');
+        }).catch(() => {
+            this._fallbackCopy(mdImage);
+            this.app.showToast('Markdown画像をコピーしました', 'info');
+        });
+    }
+
+    // ========== Clipboard Fallback ==========
+
+    _fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
     }
 
     // ========== Delete ==========
