@@ -231,6 +231,11 @@ class App {
         document.getElementById('ribbon-reset')?.addEventListener('click', () => {
             this._showResetDialog();
         });
+
+        // Help
+        document.getElementById('ribbon-help')?.addEventListener('click', () => {
+            this._showHelp();
+        });
     }
 
     _bindMobileActionBar() {
@@ -246,6 +251,9 @@ class App {
         });
         document.getElementById('mob-reset')?.addEventListener('click', () => {
             this._showResetDialog();
+        });
+        document.getElementById('mob-help')?.addEventListener('click', () => {
+            this._showHelp();
         });
 
         // Mobile language selector
@@ -486,21 +494,103 @@ class App {
 
     async _resetSession() {
         try {
-            // Clear session data from localStorage (keep theme + language preferences)
+            // 1. Save theme + language preferences before clearing
+            const themeVal = localStorage.getItem(THEME_KEY);
+            const langVal = localStorage.getItem('realtimemd-lang');
+
+            // 2. Clear ALL localStorage keys used by this app
             localStorage.removeItem('realtimemd-session');
+            localStorage.removeItem(THEME_KEY);
+            localStorage.removeItem('realtimemd-lang');
 
-            // Clear IndexedDB (virtual filesystem)
-            if (this.fileManager) {
-                await this.fileManager.clearAll();
+            // 3. Clear any sessionStorage entries
+            sessionStorage.clear();
+
+            // 4. Delete the entire IndexedDB database (not just clear stores)
+            if (this.fileManager?.db) {
+                this.fileManager.db.close();
             }
+            await new Promise((resolve, reject) => {
+                const req = indexedDB.deleteDatabase('realtimemd-workspace');
+                req.onsuccess = () => resolve();
+                req.onerror = (e) => reject(e);
+                req.onblocked = () => resolve(); // proceed even if blocked
+            });
 
-            // Reload to reset all in-memory state
-            location.reload();
+            // 5. Restore preferences (theme + lang persist across reset)
+            if (themeVal) localStorage.setItem(THEME_KEY, themeVal);
+            if (langVal) localStorage.setItem('realtimemd-lang', langVal);
+
+            // 6. Force clean navigation (replaces current history entry)
+            location.replace(location.pathname);
         } catch (e) {
             console.error('Reset session error:', e);
             // Fallback: force reload anyway
-            location.reload();
+            location.replace(location.pathname);
         }
+    }
+
+    // ========== Help Panel ==========
+
+    _showHelp() {
+        const overlay = document.getElementById('help-overlay');
+        if (!overlay) return;
+
+        // Populate content
+        const body = document.getElementById('help-body');
+        if (body) body.innerHTML = this._getHelpContent();
+
+        overlay.classList.add('visible');
+
+        // Close handlers
+        const closeBtn = document.getElementById('help-close');
+        const onClose = () => {
+            overlay.classList.remove('visible');
+            closeBtn?.removeEventListener('click', onClose);
+            document.removeEventListener('keydown', onEsc);
+        };
+        const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+
+        closeBtn?.addEventListener('click', onClose);
+        document.addEventListener('keydown', onEsc);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) onClose();
+        }, { once: true });
+    }
+
+    _getHelpContent() {
+        return `
+<section>
+  <h4>${t('help.images')}</h4>
+  <p>${t('help.imagesDesc')}</p>
+  <pre><code>![${t('help.altText')}](relative/path/to/image.png)</code></pre>
+  <p><small>${t('help.imageFormats')}</small></p>
+  <p><small>${t('help.imageTip')}</small></p>
+</section>
+<section>
+  <h4>${t('help.math')}</h4>
+  <p>${t('help.mathDesc')}</p>
+  <pre><code>${t('help.mathInlineLabel')}: $E=mc^2$
+
+${t('help.mathDisplayLabel')}:
+$$
+\\int_0^1 x^2\\,dx = \\frac{1}{3}
+$$</code></pre>
+  <p><small>${t('help.mathEscape')}</small></p>
+</section>
+<section>
+  <h4>${t('help.mermaid')}</h4>
+  <p>${t('help.mermaidDesc')}</p>
+  <pre><code>\`\`\`mermaid
+graph TD
+  A[${t('help.mermaidStart')}] --> B[${t('help.mermaidProcess')}]
+  B --> C[${t('help.mermaidEnd')}]
+\`\`\`</code></pre>
+</section>
+<section>
+  <h4>${t('help.pdf')}</h4>
+  <p>${t('help.pdfDesc')}</p>
+</section>`;
     }
 
     _bindMobile() {

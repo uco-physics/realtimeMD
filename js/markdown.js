@@ -39,17 +39,21 @@ export class MarkdownParser {
       return placeholder;
     });
 
-    // Extract math blocks: \[ ... \] (display) — must come before inline math
+    // Handle escaped dollar signs: \$ → placeholder, restored later as literal $
+    const ESCAPED_DOLLAR = '\x00ESCAPEDDOLLAR\x00';
+    html = html.replace(/\\\$/g, ESCAPED_DOLLAR);
+
+    // Extract display math: $$ ... $$ (may span lines)
     const mathBlocks = [];
-    html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, math) => {
+    html = html.replace(/\$\$([\s\S]+?)\$\$/g, (match, math) => {
       const placeholder = `\x00MATHBLOCK${mathBlocks.length}\x00`;
-      mathBlocks.push(math);
+      mathBlocks.push(math.trim());
       return placeholder;
     });
 
-    // Extract inline math: \( ... \)
+    // Extract inline math: $...$ (single line, non-greedy, must have closing $ on same line)
     const inlineMath = [];
-    html = html.replace(/\\\((.+?)\\\)/g, (match, math) => {
+    html = html.replace(/\$([^$\n]+?)\$/g, (match, math) => {
       const placeholder = `\x00INLINEMATH${inlineMath.length}\x00`;
       inlineMath.push(math);
       return placeholder;
@@ -120,15 +124,18 @@ export class MarkdownParser {
       html = html.replace(`\x00CODEBLOCK${i}\x00`, replacement);
     }
 
-    // Restore display math
+    // Restore display math (output \[ \] for MathJax)
     for (let i = 0; i < mathBlocks.length; i++) {
       html = html.replace(`\x00MATHBLOCK${i}\x00`, `<div class="math-display">\\[${mathBlocks[i]}\\]</div>`);
     }
 
-    // Restore inline math
+    // Restore inline math (output \( \) for MathJax)
     for (let i = 0; i < inlineMath.length; i++) {
       html = html.replace(`\x00INLINEMATH${i}\x00`, `<span class="math-inline">\\(${inlineMath[i]}\\)</span>`);
     }
+
+    // Restore escaped dollar signs as literal $
+    html = html.replace(new RegExp(ESCAPED_DOLLAR.replace(/\x00/g, '\\x00'), 'g'), '$');
 
     return html.trim();
   }
