@@ -1296,6 +1296,10 @@ a:hover {
 /* --- Print Stylesheet (PDF Export) --- */
 @media print {
 
+  @page {
+    margin: 12mm;
+  }
+
   /* Hide everything except the preview content */
   .toolbar,
   .ribbon,
@@ -1313,9 +1317,12 @@ a:hover {
     display: none !important;
   }
 
-  /* Reset layout for print */
-  body,
-  html {
+  /* CRITICAL: Reset layout constraints that cause single-page truncation */
+  html,
+  body {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     background: white !important;
     color: black !important;
     margin: 0;
@@ -1324,15 +1331,21 @@ a:hover {
 
   #app {
     display: block !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .main-container {
     display: block !important;
+    height: auto !important;
+    overflow: visible !important;
     padding: 0 !important;
   }
 
   .workspace {
     display: block !important;
+    height: auto !important;
+    overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
   }
@@ -1340,6 +1353,7 @@ a:hover {
   .editor-preview-container {
     display: block !important;
     height: auto !important;
+    overflow: visible !important;
   }
 
   .preview-pane {
@@ -1347,13 +1361,17 @@ a:hover {
     flex: unset !important;
     width: 100% !important;
     height: auto !important;
-    border: none !important;
+    max-height: none !important;
     overflow: visible !important;
+    border: none !important;
+    position: static !important;
   }
 
   .preview-wrapper {
     overflow: visible !important;
     height: auto !important;
+    max-height: none !important;
+    position: static !important;
   }
 
   .preview-content {

@@ -455,10 +455,130 @@ class App {
     _savePreviewAsPdf() {
         this.showToast(t('toast.pdfInfo'), 'info');
 
-        // Short delay to let toast appear, then trigger print
-        setTimeout(() => {
-            window.print();
-        }, 300);
+        // Get rendered preview HTML
+        const previewEl = document.querySelector('.preview-content');
+        if (!previewEl) return;
+
+        const previewHtml = previewEl.innerHTML;
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+        // Open a new clean window with ONLY the preview content
+        const printWin = window.open('', '_blank');
+        if (!printWin) {
+            this.showToast('Pop-up blocked. Please allow pop-ups for this site.', 'error');
+            return;
+        }
+
+        // Detect if content has MathJax or Mermaid
+        const hasMath = previewHtml.includes('math-inline') || previewHtml.includes('math-display');
+
+        printWin.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RealtimeMD — Print Preview</title>
+<style>
+  @page { margin: 12mm; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: auto !important;
+    overflow: visible !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    color: #222;
+    background: #fff;
+  }
+  .print-content {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  h1, h2, h3, h4, h5, h6 { color: #111; margin-top: 1.2em; margin-bottom: 0.4em; }
+  h1 { font-size: 1.8em; border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { font-size: 1.5em; border-bottom: 1px solid #eee; padding-bottom: 0.2em; }
+  a { color: #1e66f5; text-decoration: underline; }
+  code {
+    background: #f0f0f0; color: #333;
+    border: 1px solid #ddd; border-radius: 3px;
+    padding: 0.15em 0.3em; font-size: 0.9em;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  }
+  pre {
+    background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;
+    padding: 12px; overflow-x: auto;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote {
+    border-left: 4px solid #999; margin: 1em 0; padding: 0.5em 1em;
+    color: #555; break-inside: avoid;
+  }
+  table {
+    border-collapse: collapse; width: 100%; margin: 1em 0;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; color: #333; }
+  th { background: #f0f0f0; font-weight: 600; }
+  img {
+    max-width: 100% !important; height: auto !important;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .mermaid {
+    text-align: center; margin: 1em 0; padding: 8px;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .mermaid svg { max-width: 100%; height: auto; }
+  .math-display {
+    text-align: center; margin: 1em 0; overflow-x: auto;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  mjx-container { break-inside: avoid; }
+  ul, ol { padding-left: 1.5em; }
+  li { margin-bottom: 0.3em; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 1.5em 0; }
+  mark { background: #fef08a; padding: 0.1em 0.2em; }
+  kbd {
+    background: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;
+    padding: 0.1em 0.4em; font-size: 0.85em;
+    font-family: 'Consolas', monospace;
+  }
+  @media print {
+    html, body { height: auto !important; overflow: visible !important; }
+    .print-content { max-width: none; padding: 0; }
+  }
+</style>
+${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],displayMath:[["\\\\[","\\\\]"]]},startup:{typeset:false}};</script><script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>' : ''}
+</head>
+<body>
+<div class="print-content">${previewHtml}</div>
+<script>
+(async function() {
+  // Wait for all images to load
+  const imgs = document.querySelectorAll('img');
+  if (imgs.length > 0) {
+    await Promise.all(Array.from(imgs).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(r => { img.onload = r; img.onerror = r; });
+    }));
+  }
+  // Wait for MathJax typesetting
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    try { await MathJax.typesetPromise(); } catch(e) { console.warn('MathJax error:', e); }
+  }
+  // Small delay for rendering to settle, then print
+  setTimeout(function() {
+    window.focus();
+    window.print();
+    // Close after printing (or cancel)
+    setTimeout(function() { window.close(); }, 500);
+  }, 300);
+})();
+</script>
+</body>
+</html>`);
+        printWin.document.close();
     }
 
     // ========== Reset Session ==========
