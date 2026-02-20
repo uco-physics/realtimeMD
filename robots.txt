@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://uco-physics.github.io/realtimeMD/sitemap.xml
