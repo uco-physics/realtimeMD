@@ -605,20 +605,70 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
     }
 
     /**
-     * Mobile: generate PDF client-side using html2canvas + jsPDF (bundled via html2pdf.js CDN)
-     * Uses a visible-but-unobtrusive export container so html2canvas can render it.
+     * Ensure html2canvas and jsPDF are loaded. Local vendor scripts should already
+     * be loaded synchronously, but this acts as a safety gate + dynamic fallback.
      */
-    async _generateMobilePdf() {
-        // html2pdf.js CDN bundles html2canvas and jsPDF as globals
-        if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
-            // Try via html2pdf bundle which exposes them differently
-            if (typeof html2pdf === 'undefined') {
-                this.showToast('PDF library not loaded. Please reload and try again.', 'error');
-                return;
+    async _ensurePdfLibsLoaded() {
+        const H2C_LOCAL = 'vendor/html2canvas.min.js';
+        const PDF_LOCAL = 'vendor/jspdf.umd.min.js';
+        const H2C_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        const PDF_CDN = 'https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js';
+
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = () => { console.log('[PDF] loaded: ' + src); resolve(); };
+            s.onerror = () => reject(new Error('Failed to load ' + src));
+            document.head.appendChild(s);
+        });
+
+        // html2canvas
+        if (typeof window.html2canvas !== 'function') {
+            console.warn('[PDF] html2canvas not on window, injecting...');
+            try {
+                await loadScript(H2C_LOCAL);
+            } catch (e) {
+                console.warn('[PDF] local html2canvas failed, trying CDN');
+                await loadScript(H2C_CDN);
             }
         }
 
-        console.log('[PDF] libs: html2canvas=' + typeof html2canvas + ', jspdf=' + typeof jspdf + ', html2pdf=' + typeof html2pdf);
+        // jsPDF
+        if (typeof window.jspdf === 'undefined' || typeof window.jspdf?.jsPDF !== 'function') {
+            console.warn('[PDF] jsPDF not on window, injecting...');
+            try {
+                await loadScript(PDF_LOCAL);
+            } catch (e) {
+                console.warn('[PDF] local jsPDF failed, trying CDN');
+                await loadScript(PDF_CDN);
+            }
+        }
+
+        // Final check with timeout
+        const deadline = Date.now() + 8000;
+        while (typeof window.html2canvas !== 'function' || typeof window.jspdf?.jsPDF !== 'function') {
+            if (Date.now() > deadline) {
+                throw new Error('PDF libraries failed to load after 8s');
+            }
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        console.log('[PDF] libs ready: html2canvas=' + typeof window.html2canvas + ', jsPDF=' + typeof window.jspdf?.jsPDF);
+    }
+
+    /**
+     * Mobile: generate PDF client-side using html2canvas + jsPDF (local vendor)
+     * Uses a visible-but-unobtrusive export container so html2canvas can render it.
+     */
+    async _generateMobilePdf() {
+        // Gate: ensure libs are loaded before anything else
+        try {
+            await this._ensurePdfLibsLoaded();
+        } catch (e) {
+            this.showToast('PDF export is unavailable because required libraries failed to load. Try again or use desktop.', 'error');
+            console.error('[PDF]', e);
+            return;
+        }
 
         const previewEl = document.querySelector('.preview-content');
         if (!previewEl || !previewEl.innerHTML.trim()) {
@@ -789,27 +839,10 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
      * Capture container using html2canvas at given scale
      */
     async _captureCanvas(container, scale) {
-        // Resolve html2canvas — try global, then html2pdf's bundled version
-        let h2c = null;
-        if (typeof html2canvas === 'function') {
-            h2c = html2canvas;
-        } else if (typeof html2pdf !== 'undefined') {
-            // html2pdf.js v0.10.x bundles html2canvas internally;
-            // extract it by creating a temporary worker and inspecting its prototype
-            try {
-                const worker = html2pdf();
-                // The worker uses html2canvas internally — access it
-                h2c = worker?.opt?.html2canvas?.__html2canvas || null;
-            } catch (e) { /* ignore */ }
-        }
-
-        if (!h2c) {
-            // Last resort: html2pdf.js bundle sometimes sets it on window after init
-            if (typeof window.html2canvas === 'function') {
-                h2c = window.html2canvas;
-            } else {
-                throw new Error('html2canvas not available (check CDN loaded)');
-            }
+        // html2canvas is guaranteed available via _ensurePdfLibsLoaded()
+        const h2c = window.html2canvas;
+        if (typeof h2c !== 'function') {
+            throw new Error('html2canvas not available on window');
         }
 
         // Temporarily make export container visible for capture
@@ -873,13 +906,9 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
      * A4: 210mm × 297mm
      */
     _canvasToMultiPagePdf(canvas, fileName) {
-        // Resolve jsPDF constructor — html2pdf.js bundles it under jspdf.jsPDF or window.jspdf.jsPDF
-        const JsPDF = (typeof jspdf !== 'undefined' && jspdf.jsPDF)
-            ? jspdf.jsPDF
-            : (typeof jsPDF !== 'undefined') ? jsPDF
-                : null;
-
-        if (!JsPDF) throw new Error('jsPDF not available');
+        // jsPDF v2.5.2 UMD sets window.jspdf.jsPDF
+        const JsPDF = window.jspdf?.jsPDF;
+        if (!JsPDF) throw new Error('jsPDF not available on window');
 
         const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
