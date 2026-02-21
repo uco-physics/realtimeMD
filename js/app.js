@@ -368,7 +368,7 @@ class App {
 
     _initTheme() {
         const saved = localStorage.getItem(THEME_KEY);
-        const theme = (saved === 'light' || saved === 'dark') ? saved : 'dark';
+        const theme = (saved === 'light' || saved === 'dark') ? saved : 'light';
         document.documentElement.setAttribute('data-theme', theme);
     }
 

@@ -611,13 +611,19 @@ a:hover {
 
 /* --- Find/Replace Bar --- */
 .find-replace-bar {
+  display: none;
+  /* hidden by default; HTML hidden attr */
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);
   padding: 4px 8px;
-  display: flex;
   flex-direction: column;
   gap: 4px;
   z-index: 10;
+}
+
+.find-replace-bar:not([hidden]) {
+  display: flex;
+  /* only show when hidden attr is removed */
 }
 
 .fr-row {
