@@ -10,7 +10,7 @@ A free, browser-based Markdown editor with live preview, virtual file management
 - **Theme Toggle** — Dark / Light mode (persisted in localStorage)
 - **Language Switcher** — English, 日本語, 中文, हिन्दी, Español, Indonesia, Português, Français, Tiếng Việt
 - **Export as ZIP** — Download entire workspace as a zip archive
-- **Save as PDF** — Print preview (desktop) or client-side PDF generation (mobile)
+- **Save as PDF** — Print preview via browser print dialog (desktop and mobile)
 - **Session Persistence** — Data survives browser close
 - **Reset Session** — Clear session data and start fresh
 - **GigaReset** — Nuclear wipe of all local data (files, caches, storage, cookies)
@@ -203,28 +203,13 @@ Nine languages: **English** (default), **Japanese**, **Chinese (Simplified)**, *
 
 ## Save Preview as PDF
 
-### Desktop
 - Click PDF button in ribbon or mobile action bar
 - Opens a new browser window with clean preview HTML and triggers the print dialog
 - Print stylesheet renders only the preview content with proper pagination
-- MathJax and Mermaid output are included
-
-### Mobile
-- On mobile devices (detected via viewport width ≤768px + touch/UA heuristics), a **client-side PDF** is generated without opening the browser print UI
-- Uses [html2canvas](https://html2canvas.hertzen.com/) to render the preview into a canvas, then [jsPDF](https://github.com/parallax/jsPDF) to slice the canvas into multi-page A4 PDF
-- Process: Preparing → Rendering → Generating PDF
-- The export container uses `position:fixed; opacity:0; pointer-events:none` to stay renderable but invisible
-- Progress toasts show status; errors suggest reducing content length
-
-**iOS Safari behavior:**
-- `<a download>` may not trigger downloads on iOS Safari
-- Fallback 1: `navigator.share({ files: [...] })` — opens the iOS share sheet
-- Fallback 2: Opens blob URL in new tab — user can tap Share → Save to Files
-
-**Known limitations:**
-- Very long documents may exceed mobile memory limits (canvas size); consider splitting content
-- html2canvas renders at scale 2 by default; retries at scale 1 if the first attempt produces blank output
-- Code highlighting colors may not perfectly match the editor theme (forced to light/print style)
+- MathJax output is included (loaded in the print window if math is detected)
+- Multi-page printing works automatically (⁠`height: auto`, `overflow: visible`)
+- On mobile, a hint toast appears: "Use the print dialog to save as PDF."
+- No client-side PDF generation libraries are required
 
 ## Keyboard Shortcuts
 
@@ -239,13 +224,12 @@ Nine languages: **English** (default), **Japanese**, **Chinese (Simplified)**, *
 
 ## Browser/Performance Limitations
 
-- CDN scripts (DOMPurify, MathJax, Mermaid, JSZip, html2pdf.js) require internet on first load
+- CDN scripts (DOMPurify, MathJax, Mermaid, JSZip) require internet on first load
 - Large MathJax expressions or complex Mermaid diagrams may cause brief rendering delays
-- Desktop PDF output quality depends on the browser's print engine (best in Chrome/Edge)
-- Mobile PDF generation depends on html2canvas rendering accuracy; some CSS features may not be captured
+- PDF output quality depends on the browser's print engine (best in Chrome/Edge)
 - Images must be uploaded to the virtual workspace (IndexedDB)
 - Browser sandboxing prevents reading local disk files
-- iOS Safari has unique storage and download behaviors; see GigaReset and Mobile PDF sections
+- iOS Safari has unique storage behaviors; see GigaReset section
 
 ## License
 
