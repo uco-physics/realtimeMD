@@ -8,6 +8,7 @@ import { FileManager } from './filemanager.js';
 import { Workspace } from './workspace.js';
 import { Storage } from './storage.js';
 import { ExtensionManager } from './extensions.js';
+import { FindReplace } from './findreplace.js';
 import { initI18n, setLang, getLang, t, applyTranslations } from './i18n.js';
 
 /* ---- Simple Event Bus ---- */
@@ -42,6 +43,7 @@ class App {
         this.workspace = null;
         this.storage = null;
         this.extensions = null;
+        this.findReplace = null;
     }
 
     async init() {
@@ -59,6 +61,7 @@ class App {
         this.workspace = new Workspace(this);
         this.storage = new Storage(this);
         this.extensions = new ExtensionManager(this);
+        this.findReplace = new FindReplace(this.editor);
 
         // Wire up events
         this._bindToolbar();

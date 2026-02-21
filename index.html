@@ -393,6 +393,28 @@
               <span id="editor-file-name" class="file-name">untitled.md</span>
               <span id="editor-unsaved-dot" class="unsaved-dot"></span>
             </div>
+            <!-- Find/Replace Bar -->
+            <div id="find-replace-bar" class="find-replace-bar" hidden>
+              <div class="fr-row">
+                <input id="fr-find" class="fr-input" type="text" placeholder="Find" spellcheck="false" />
+                <span id="fr-count" class="fr-count"></span>
+                <button id="fr-prev" class="fr-btn" title="Previous (Shift+Enter)">&#9650;</button>
+                <button id="fr-next" class="fr-btn" title="Next (Enter)">&#9660;</button>
+                <div class="fr-toggles">
+                  <label class="fr-toggle" title="Match Case"><input id="fr-case"
+                      type="checkbox" /><span>Aa</span></label>
+                  <label class="fr-toggle" title="Whole Word"><input id="fr-word"
+                      type="checkbox" /><span>W</span></label>
+                  <label class="fr-toggle" title="Regex"><input id="fr-regex" type="checkbox" /><span>.*</span></label>
+                </div>
+                <button id="fr-close" class="fr-btn fr-close-btn" title="Close (Esc)">&#10005;</button>
+              </div>
+              <div id="fr-replace-row" class="fr-row" hidden>
+                <input id="fr-replace" class="fr-input" type="text" placeholder="Replace" spellcheck="false" />
+                <button id="fr-replace-btn" class="fr-btn fr-action-btn">Replace</button>
+                <button id="fr-replace-all" class="fr-btn fr-action-btn">All</button>
+              </div>
+            </div>
             <div class="editor-wrapper">
               <div id="line-numbers" class="line-numbers" aria-hidden="true">
                 <span class="line-num">1</span>

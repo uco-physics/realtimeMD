@@ -210,6 +210,13 @@ export class Editor {
     }
 
     _onKeyDown(e) {
+        // Escape — close Find/Replace bar if open
+        if (e.key === 'Escape' && this.app.findReplace?.isOpen) {
+            e.preventDefault();
+            this.app.findReplace.close();
+            return;
+        }
+
         // Tab key — indent
         if (e.key === 'Tab') {
             e.preventDefault();
@@ -262,7 +269,21 @@ export class Editor {
 
         // Ctrl/Cmd + shortcuts
         if (e.ctrlKey || e.metaKey) {
-            switch (e.key.toLowerCase()) {
+            const key = e.key.toLowerCase();
+
+            // Find/Replace — intercept before other shortcuts
+            if (key === 'f') {
+                e.preventDefault();
+                if (this.app.findReplace) this.app.findReplace.open('find');
+                return;
+            }
+            if (key === 'h') {
+                e.preventDefault();
+                if (this.app.findReplace) this.app.findReplace.open('replace');
+                return;
+            }
+
+            switch (key) {
                 case 'b':
                     e.preventDefault();
                     this.insertAtCursor('**', '**');

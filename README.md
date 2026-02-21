@@ -221,6 +221,11 @@ Nine languages: **English** (default), **Japanese**, **Chinese (Simplified)**, *
 | `Ctrl+S` | Save |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
+| `Ctrl+F` | Find |
+| `Ctrl+H` | Find & Replace |
+| `Escape` | Close Find bar |
+
+> **Find/Replace** supports Match Case, Whole Word, and Regex toggles. Use Enter / Shift+Enter to navigate next/prev match. Match count displays "3 of 17" style.
 
 ## Browser/Performance Limitations
 
