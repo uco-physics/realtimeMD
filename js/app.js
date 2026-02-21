@@ -618,6 +618,8 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
             }
         }
 
+        console.log('[PDF] libs: html2canvas=' + typeof html2canvas + ', jspdf=' + typeof jspdf + ', html2pdf=' + typeof html2pdf);
+
         const previewEl = document.querySelector('.preview-content');
         if (!previewEl || !previewEl.innerHTML.trim()) {
             this.showToast('Nothing to export.', 'error');
@@ -654,6 +656,8 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
             this._applyPrintStyles(exportContainer);
 
             document.body.appendChild(exportContainer);
+
+            console.log('[PDF] export container appended, scrollW=' + exportContainer.scrollWidth + ', scrollH=' + exportContainer.scrollHeight + ', childNodes=' + exportContainer.childNodes.length);
 
             // ── 2. readyForExport pipeline ──
             this.showToast('Rendering…', 'info');
@@ -692,15 +696,26 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
             // 2e. Two rAF frames for layout paint
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
+            console.log('[PDF] readyForExport done, scrollW=' + exportContainer.scrollWidth + ', scrollH=' + exportContainer.scrollHeight);
+
             // ── 3. Capture with html2canvas ──
             this.showToast('Generating PDF…', 'info');
 
-            let canvas = await this._captureCanvas(exportContainer, 2);
+            let canvas;
+            try {
+                canvas = await this._captureCanvas(exportContainer, 2);
+                console.log('[PDF] canvas captured at scale 2: ' + canvas.width + 'x' + canvas.height);
+            } catch (captureErr) {
+                console.warn('[PDF] scale 2 capture failed:', captureErr.message);
+                canvas = await this._captureCanvas(exportContainer, 1);
+                console.log('[PDF] canvas captured at scale 1: ' + canvas.width + 'x' + canvas.height);
+            }
 
             // ── 4. Sanity check ──
             if (!this._isCanvasValid(canvas)) {
-                console.warn('PDF capture blank at scale 2, retrying at scale 1');
+                console.warn('[PDF] capture blank at initial scale, retrying at scale 1');
                 canvas = await this._captureCanvas(exportContainer, 1);
+                console.log('[PDF] retry canvas: ' + canvas.width + 'x' + canvas.height);
             }
 
             if (!this._isCanvasValid(canvas)) {
@@ -709,7 +724,9 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
 
             // ── 5. Convert canvas to multi-page PDF ──
             const fileName = this._getPdfFileName();
+            console.log('[PDF] converting canvas ' + canvas.width + 'x' + canvas.height + ' to multi-page PDF');
             const pdfBlob = this._canvasToMultiPagePdf(canvas, fileName);
+            console.log('[PDF] blob created, size=' + pdfBlob.size + ' bytes');
 
             // ── 6. Download/share ──
             this._downloadOrSharePdf(pdfBlob, fileName);
@@ -717,8 +734,9 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
 
         } catch (err) {
             console.error('Mobile PDF generation failed:', err);
+            const detail = err?.message || String(err);
             this.showToast(
-                'PDF generation failed. Try reducing content length or reload the page.',
+                `PDF failed: ${detail}`,
                 'error'
             );
         } finally {
@@ -771,12 +789,28 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
      * Capture container using html2canvas at given scale
      */
     async _captureCanvas(container, scale) {
-        // Access html2canvas — it's exposed as a global by the html2pdf.js bundle
-        const h2c = typeof html2canvas !== 'undefined' ? html2canvas
-            : (typeof html2pdf !== 'undefined' && html2pdf.html2canvas) ? html2pdf.html2canvas
-                : null;
+        // Resolve html2canvas — try global, then html2pdf's bundled version
+        let h2c = null;
+        if (typeof html2canvas === 'function') {
+            h2c = html2canvas;
+        } else if (typeof html2pdf !== 'undefined') {
+            // html2pdf.js v0.10.x bundles html2canvas internally;
+            // extract it by creating a temporary worker and inspecting its prototype
+            try {
+                const worker = html2pdf();
+                // The worker uses html2canvas internally — access it
+                h2c = worker?.opt?.html2canvas?.__html2canvas || null;
+            } catch (e) { /* ignore */ }
+        }
 
-        if (!h2c) throw new Error('html2canvas not available');
+        if (!h2c) {
+            // Last resort: html2pdf.js bundle sometimes sets it on window after init
+            if (typeof window.html2canvas === 'function') {
+                h2c = window.html2canvas;
+            } else {
+                throw new Error('html2canvas not available (check CDN loaded)');
+            }
+        }
 
         // Temporarily make export container visible for capture
         container.style.opacity = '1';
