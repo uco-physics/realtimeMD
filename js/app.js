@@ -232,6 +232,11 @@ class App {
             this._showResetDialog();
         });
 
+        // GigaReset
+        document.getElementById('ribbon-gigareset')?.addEventListener('click', () => {
+            this._showGigaResetDialog();
+        });
+
         // Help
         document.getElementById('ribbon-help')?.addEventListener('click', () => {
             this._showHelp();
@@ -251,6 +256,9 @@ class App {
         });
         document.getElementById('mob-reset')?.addEventListener('click', () => {
             this._showResetDialog();
+        });
+        document.getElementById('mob-gigareset')?.addEventListener('click', () => {
+            this._showGigaResetDialog();
         });
         document.getElementById('mob-help')?.addEventListener('click', () => {
             this._showHelp();
@@ -597,119 +605,114 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
     }
 
     /**
-     * Mobile: generate PDF client-side using html2pdf.js and download/share
+     * Mobile: generate PDF client-side using html2canvas + jsPDF (bundled via html2pdf.js CDN)
+     * Uses a visible-but-unobtrusive export container so html2canvas can render it.
      */
     async _generateMobilePdf() {
-        // Check html2pdf availability
-        if (typeof html2pdf === 'undefined') {
-            this.showToast('PDF library not loaded. Please try again.', 'error');
-            return;
+        // html2pdf.js CDN bundles html2canvas and jsPDF as globals
+        if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+            // Try via html2pdf bundle which exposes them differently
+            if (typeof html2pdf === 'undefined') {
+                this.showToast('PDF library not loaded. Please reload and try again.', 'error');
+                return;
+            }
         }
 
         const previewEl = document.querySelector('.preview-content');
-        if (!previewEl) return;
+        if (!previewEl || !previewEl.innerHTML.trim()) {
+            this.showToast('Nothing to export.', 'error');
+            return;
+        }
 
-        // Show progress toast
-        this.showToast('Generating PDF…', 'info');
+        this.showToast('Preparing…', 'info');
 
+        let exportContainer = null;
         try {
-            // Clone preview into an offscreen container with light styling
-            const container = document.createElement('div');
-            container.style.cssText = `
-                position: absolute; left: -9999px; top: 0;
-                width: 720px; padding: 20px;
-                background: #fff; color: #222;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                font-size: 12pt; line-height: 1.6;
-                overflow: visible; height: auto;
-            `;
-            container.innerHTML = previewEl.innerHTML;
+            // ── 1. Build visible export DOM ──
+            exportContainer = document.createElement('div');
+            exportContainer.id = 'pdf-export-container';
+            exportContainer.style.cssText = [
+                'position: fixed',
+                'left: 0', 'top: 0',
+                'width: 794px',          // ~A4 at 96 DPI (210mm)
+                'padding: 24px',
+                'background: #ffffff',
+                'color: #222',
+                'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                'font-size: 12pt',
+                'line-height: 1.6',
+                'height: auto !important',
+                'max-height: none !important',
+                'overflow: visible !important',
+                'opacity: 0',
+                'pointer-events: none',
+                'z-index: 999999',
+            ].join('; ');
+            exportContainer.innerHTML = previewEl.innerHTML;
 
-            // Force light-theme styles on cloned content
-            container.querySelectorAll('pre').forEach(el => {
-                el.style.cssText = 'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:12px;overflow-x:auto;color:#333;';
-            });
-            container.querySelectorAll('code').forEach(el => {
-                if (el.parentElement?.tagName !== 'PRE') {
-                    el.style.cssText = 'background:#f0f0f0;color:#333;border:1px solid #ddd;border-radius:3px;padding:0.15em 0.3em;';
-                }
-            });
-            container.querySelectorAll('blockquote').forEach(el => {
-                el.style.cssText = 'border-left:4px solid #999;margin:1em 0;padding:0.5em 1em;color:#555;';
-            });
-            container.querySelectorAll('th').forEach(el => {
-                el.style.cssText = 'background:#f0f0f0;border:1px solid #ccc;padding:6px 10px;color:#333;font-weight:600;';
-            });
-            container.querySelectorAll('td').forEach(el => {
-                el.style.cssText = 'border:1px solid #ccc;padding:6px 10px;color:#333;';
-            });
-            container.querySelectorAll('a').forEach(el => {
-                el.style.cssText = 'color:#1e66f5;text-decoration:underline;';
-            });
-            container.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
-                el.style.color = '#111';
-            });
+            // Force light-theme inline styles on cloned content
+            this._applyPrintStyles(exportContainer);
 
-            document.body.appendChild(container);
+            document.body.appendChild(exportContainer);
 
-            // Wait for images in clone to load
-            const imgs = container.querySelectorAll('img');
+            // ── 2. readyForExport pipeline ──
+            this.showToast('Rendering…', 'info');
+
+            // 2a. Fonts
+            if (document.fonts && document.fonts.ready) {
+                await document.fonts.ready;
+            }
+
+            // 2b. Images
+            const imgs = exportContainer.querySelectorAll('img');
             if (imgs.length > 0) {
                 await Promise.all(Array.from(imgs).map(img => {
-                    if (img.complete) return Promise.resolve();
-                    return new Promise(r => {
-                        img.onload = r;
-                        img.onerror = r;
-                    });
+                    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                    return new Promise(r => { img.onload = r; img.onerror = r; });
                 }));
             }
 
-            // Wait for MathJax if present
+            // 2c. MathJax
             if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-                try { await MathJax.typesetPromise([container]); } catch (e) { /* ignore */ }
+                try { await MathJax.typesetPromise([exportContainer]); } catch (e) {
+                    console.warn('MathJax typeset in export failed:', e);
+                }
             }
 
-            // Small settle delay
-            await new Promise(r => setTimeout(r, 200));
-
-            // Generate filename from active file or default
-            const activeFile = this.storage?.getSession?.()?.activeFile;
-            const baseName = activeFile
-                ? activeFile.replace(/^.*[/\\]/, '').replace(/\.[^.]+$/, '')
-                : 'document';
-            const fileName = `${baseName}.pdf`;
-
-            // Generate PDF using html2pdf.js
-            const opt = {
-                margin: [10, 10, 10, 10], // mm
-                filename: fileName,
-                image: { type: 'jpeg', quality: 0.92 },
-                html2canvas: {
-                    scale: 1.5, // Balance quality vs memory on mobile
-                    useCORS: true,
-                    logging: false,
-                    scrollX: 0,
-                    scrollY: 0,
-                    windowWidth: 720,
-                },
-                jsPDF: {
-                    unit: 'mm',
-                    format: 'a4',
-                    orientation: 'portrait'
-                },
-                pagebreak: {
-                    mode: ['avoid-all', 'css', 'legacy']
+            // 2d. Mermaid
+            if (typeof mermaid !== 'undefined') {
+                const mermaidEls = exportContainer.querySelectorAll('.mermaid:not([data-processed])');
+                if (mermaidEls.length > 0) {
+                    try { await mermaid.run({ nodes: mermaidEls }); } catch (e) {
+                        console.warn('Mermaid render in export failed:', e);
+                    }
                 }
-            };
+            }
 
-            const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+            // 2e. Two rAF frames for layout paint
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-            // Clean up offscreen container
-            document.body.removeChild(container);
+            // ── 3. Capture with html2canvas ──
+            this.showToast('Generating PDF…', 'info');
 
-            // Download the generated PDF
+            let canvas = await this._captureCanvas(exportContainer, 2);
+
+            // ── 4. Sanity check ──
+            if (!this._isCanvasValid(canvas)) {
+                console.warn('PDF capture blank at scale 2, retrying at scale 1');
+                canvas = await this._captureCanvas(exportContainer, 1);
+            }
+
+            if (!this._isCanvasValid(canvas)) {
+                throw new Error('Canvas capture produced blank output after retries');
+            }
+
+            // ── 5. Convert canvas to multi-page PDF ──
+            const fileName = this._getPdfFileName();
+            const pdfBlob = this._canvasToMultiPagePdf(canvas, fileName);
+
+            // ── 6. Download/share ──
             this._downloadOrSharePdf(pdfBlob, fileName);
-
             this.showToast(t('toast.saved'), 'success');
 
         } catch (err) {
@@ -718,7 +721,192 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
                 'PDF generation failed. Try reducing content length or reload the page.',
                 'error'
             );
+        } finally {
+            // ── 7. Always clean up ──
+            if (exportContainer && exportContainer.parentNode) {
+                exportContainer.parentNode.removeChild(exportContainer);
+            }
         }
+    }
+
+    /**
+     * Apply light-theme inline styles to an export container for print readability
+     */
+    _applyPrintStyles(container) {
+        container.querySelectorAll('pre').forEach(el => {
+            el.style.cssText = 'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:12px;overflow-x:auto;color:#333;white-space:pre-wrap;word-wrap:break-word;';
+        });
+        container.querySelectorAll('code').forEach(el => {
+            if (el.parentElement?.tagName !== 'PRE') {
+                el.style.cssText = 'background:#f0f0f0;color:#333;border:1px solid #ddd;border-radius:3px;padding:0.15em 0.3em;';
+            }
+        });
+        container.querySelectorAll('blockquote').forEach(el => {
+            el.style.cssText = 'border-left:4px solid #999;margin:1em 0;padding:0.5em 1em;color:#555;';
+        });
+        container.querySelectorAll('th').forEach(el => {
+            el.style.cssText = 'background:#f0f0f0;border:1px solid #ccc;padding:6px 10px;color:#333;font-weight:600;';
+        });
+        container.querySelectorAll('td').forEach(el => {
+            el.style.cssText = 'border:1px solid #ccc;padding:6px 10px;color:#333;';
+        });
+        container.querySelectorAll('table').forEach(el => {
+            el.style.cssText = 'border-collapse:collapse;width:100%;margin:1em 0;';
+        });
+        container.querySelectorAll('a').forEach(el => {
+            el.style.cssText = 'color:#1e66f5;text-decoration:underline;';
+        });
+        container.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
+            el.style.color = '#111';
+        });
+        container.querySelectorAll('img').forEach(el => {
+            el.style.cssText = 'max-width:100%;height:auto;';
+        });
+        container.querySelectorAll('.mermaid svg').forEach(el => {
+            el.style.cssText = 'max-width:100%;height:auto;';
+        });
+    }
+
+    /**
+     * Capture container using html2canvas at given scale
+     */
+    async _captureCanvas(container, scale) {
+        // Access html2canvas — it's exposed as a global by the html2pdf.js bundle
+        const h2c = typeof html2canvas !== 'undefined' ? html2canvas
+            : (typeof html2pdf !== 'undefined' && html2pdf.html2canvas) ? html2pdf.html2canvas
+                : null;
+
+        if (!h2c) throw new Error('html2canvas not available');
+
+        // Temporarily make export container visible for capture
+        container.style.opacity = '1';
+
+        const canvas = await h2c(container, {
+            scale: scale,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: 794,
+            width: container.scrollWidth,
+            height: container.scrollHeight,
+        });
+
+        // Hide again immediately
+        container.style.opacity = '0';
+
+        return canvas;
+    }
+
+    /**
+     * Check if canvas has actual rendered content (not blank)
+     */
+    _isCanvasValid(canvas) {
+        if (!canvas || canvas.width === 0 || canvas.height === 0) return false;
+
+        // Sample pixels from several locations to detect all-white/blank
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return false;
+
+        const samplePoints = [
+            [canvas.width * 0.5, canvas.height * 0.1],
+            [canvas.width * 0.5, canvas.height * 0.3],
+            [canvas.width * 0.5, canvas.height * 0.5],
+            [canvas.width * 0.25, canvas.height * 0.5],
+        ];
+
+        let allWhite = true;
+        for (const [x, y] of samplePoints) {
+            const px = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+            // Check if pixel is NOT white (255,255,255) and NOT transparent (alpha 0)
+            if (px[3] > 0 && (px[0] < 250 || px[1] < 250 || px[2] < 250)) {
+                allWhite = false;
+                break;
+            }
+        }
+
+        if (allWhite) {
+            console.warn('Canvas sanity check: all sampled pixels are white/transparent');
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Convert a tall canvas into a multi-page A4 PDF using jsPDF
+     * A4: 210mm × 297mm
+     */
+    _canvasToMultiPagePdf(canvas, fileName) {
+        // Resolve jsPDF constructor — html2pdf.js bundles it under jspdf.jsPDF or window.jspdf.jsPDF
+        const JsPDF = (typeof jspdf !== 'undefined' && jspdf.jsPDF)
+            ? jspdf.jsPDF
+            : (typeof jsPDF !== 'undefined') ? jsPDF
+                : null;
+
+        if (!JsPDF) throw new Error('jsPDF not available');
+
+        const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+        const pdfPageW = 210; // mm
+        const pdfPageH = 297; // mm
+        const margin = 10;   // mm
+        const contentW = pdfPageW - 2 * margin; // 190mm printable width
+        const contentH = pdfPageH - 2 * margin; // 277mm printable height
+
+        // Scale canvas width to fit contentW
+        const imgW = contentW;
+        const imgH = (canvas.height / canvas.width) * imgW; // total image height in mm
+
+        // Height per page in mm
+        const pageContentH = contentH;
+
+        // How many pages
+        const totalPages = Math.ceil(imgH / pageContentH);
+
+        // For each page, slice the source canvas
+        const sourcePageH = canvas.height / totalPages; // px per page in source canvas
+
+        for (let i = 0; i < totalPages; i++) {
+            if (i > 0) pdf.addPage();
+
+            // Create a page-sized canvas slice
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = Math.min(sourcePageH, canvas.height - i * sourcePageH);
+            const sliceCtx = sliceCanvas.getContext('2d');
+
+            // Fill white background
+            sliceCtx.fillStyle = '#ffffff';
+            sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+
+            // Draw the corresponding slice from the source canvas
+            sliceCtx.drawImage(
+                canvas,
+                0, i * sourcePageH,                         // source x, y
+                canvas.width, sliceCanvas.height,            // source w, h
+                0, 0,                                        // dest x, y
+                sliceCanvas.width, sliceCanvas.height         // dest w, h
+            );
+
+            const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+            const sliceH = (sliceCanvas.height / canvas.width) * imgW; // mm height of this slice
+            pdf.addImage(sliceData, 'JPEG', margin, margin, contentW, sliceH);
+        }
+
+        return pdf.output('blob');
+    }
+
+    /**
+     * Generate PDF filename from active file or default
+     */
+    _getPdfFileName() {
+        const activeFile = this.storage?.getSession?.()?.activeFile;
+        const baseName = activeFile
+            ? activeFile.replace(/^.*[/\\]/, '').replace(/\.[^.]+$/, '')
+            : 'document';
+        return `${baseName}.pdf`;
     }
 
     /**
@@ -736,17 +924,30 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
         a.click();
         document.body.removeChild(a);
 
-        // Fallback for iOS Safari where <a download> may not trigger
-        // If navigator.share is available, also offer sharing
-        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
-            const file = new File([blob], fileName, { type: 'application/pdf' });
-            navigator.share({ files: [file], title: 'RealtimeMD PDF' }).catch(() => {
-                // Share cancelled or failed; download link was already attempted
-            });
+        // Detect iOS Safari where <a download> often doesn't work
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        if (isIOS) {
+            // Try navigator.share first
+            try {
+                const file = new File([blob], fileName, { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    navigator.share({ files: [file], title: 'RealtimeMD PDF' }).catch(() => {
+                        // Share cancelled — open in new tab as fallback
+                        window.open(url, '_blank');
+                        this.showToast('Tap Share → Save to Files', 'info');
+                    });
+                    return;
+                }
+            } catch (e) { /* File constructor may fail on older iOS */ }
+
+            // Fallback: open blob URL in new tab
+            window.open(url, '_blank');
+            this.showToast('Tap Share → Save to Files', 'info');
         }
 
         // Revoke URL after delay to allow download to start
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        setTimeout(() => URL.revokeObjectURL(url), 15000);
     }
 
     // ========== Reset Session ==========
@@ -816,6 +1017,112 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
             // Fallback: force reload anyway
             location.replace(location.pathname);
         }
+    }
+
+    // ========== GigaReset (Nuclear Wipe) ==========
+
+    _showGigaResetDialog() {
+        const overlay = document.getElementById('gigareset-dialog-overlay');
+        if (!overlay) return;
+        overlay.classList.add('visible');
+
+        const cancelBtn = document.getElementById('gigareset-cancel');
+        const confirmBtn = document.getElementById('gigareset-confirm');
+
+        const cleanup = () => {
+            overlay.classList.remove('visible');
+            cancelBtn?.removeEventListener('click', onCancel);
+            confirmBtn?.removeEventListener('click', onConfirm);
+        };
+
+        const onCancel = () => cleanup();
+        const onConfirm = async () => {
+            cleanup();
+            await this._gigaReset();
+        };
+
+        cancelBtn?.addEventListener('click', onCancel);
+        confirmBtn?.addEventListener('click', onConfirm);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) cleanup();
+        }, { once: true });
+    }
+
+    async _gigaReset() {
+        this.showToast('Erasing all data…', 'info');
+
+        try {
+            // 1. Clear Web Storage
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // 2. Clear IndexedDB — enumerate all databases and delete each
+            if (this.fileManager?.db) {
+                this.fileManager.db.close();
+            }
+            if (indexedDB.databases) {
+                try {
+                    const dbs = await indexedDB.databases();
+                    await Promise.all(dbs.map(db => new Promise((resolve) => {
+                        const req = indexedDB.deleteDatabase(db.name);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => resolve();
+                        req.onblocked = () => resolve();
+                    })));
+                } catch (e) {
+                    console.warn('GigaReset: indexedDB.databases() failed:', e);
+                }
+            }
+            // Always try known DB name as fallback
+            await new Promise((resolve) => {
+                const req = indexedDB.deleteDatabase('realtimemd-workspace');
+                req.onsuccess = () => resolve();
+                req.onerror = () => resolve();
+                req.onblocked = () => resolve();
+            });
+
+            // 3. Clear Cache Storage (Service Worker caches)
+            if ('caches' in window) {
+                try {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(key => caches.delete(key)));
+                } catch (e) {
+                    console.warn('GigaReset: caches clear failed:', e);
+                }
+            }
+
+            // 4. Clear Service Worker registrations
+            if ('serviceWorker' in navigator) {
+                try {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(r => r.unregister()));
+                } catch (e) {
+                    console.warn('GigaReset: SW unregister failed:', e);
+                }
+            }
+
+            // 5. Clear cookies (best-effort)
+            try {
+                const cookies = document.cookie.split(';');
+                for (const cookie of cookies) {
+                    const name = cookie.split('=')[0].trim();
+                    if (!name) continue;
+                    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+                    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${location.pathname}`;
+                }
+            } catch (e) {
+                console.warn('GigaReset: cookie clear failed:', e);
+            }
+
+            console.log('GigaReset: all clearable data erased. Some browser-managed data may remain due to platform restrictions.');
+
+        } catch (e) {
+            console.error('GigaReset error:', e);
+        }
+
+        // 6. Hard reload — always execute even if some steps failed
+        location.replace(location.pathname + location.search);
     }
 
     // ========== Help Panel ==========

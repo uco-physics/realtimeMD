@@ -8,11 +8,12 @@ A free, browser-based Markdown editor with live preview, virtual file management
 - **Virtual Workspace** — Manage files & folders in-browser (IndexedDB)
 - **Image Support** — Upload & render images with relative path resolution
 - **Theme Toggle** — Dark / Light mode (persisted in localStorage)
-- **Language Switcher** — English, 日本語, 中文, हिन्दी
+- **Language Switcher** — English, 日本語, 中文, हिन्दी, Español, Indonesia, Português, Français, Tiếng Việt
 - **Export as ZIP** — Download entire workspace as a zip archive
-- **Save as PDF** — Print preview content via browser print dialog
+- **Save as PDF** — Print preview (desktop) or client-side PDF generation (mobile)
 - **Session Persistence** — Data survives browser close
-- **Reset Session** — Clear all data and start fresh
+- **Reset Session** — Clear session data and start fresh
+- **GigaReset** — Nuclear wipe of all local data (files, caches, storage, cookies)
 - **GitHub-like Markdown** — HTML blocks, MathJax, Mermaid diagrams
 - **Mobile-friendly** — Bottom action bar on small screens
 
@@ -58,7 +59,8 @@ On screens ≤767px, the ribbon is hidden and a compact bottom action bar appear
 - **PDF** — Save preview as PDF
 - **ZIP** — Export workspace as ZIP
 - **Reset** — Reset session
-- **Language selector** — EN/JA/ZH/HI dropdown
+- **GigaReset** — Nuclear wipe (circle-X icon)
+- **Language selector** — EN/JA/ZH/HI/ES/ID/PT/FR/VI dropdown
 
 The bar includes `env(safe-area-inset-bottom)` padding for iOS devices. The workspace content area has bottom padding to prevent the bar from covering content. Desktop/tablet layouts are unaffected.
 
@@ -80,6 +82,29 @@ Click the reset button (↺ icon with exclamation) in the ribbon (desktop) or mo
 - Language preference (`realtimemd-lang`)
 
 After reset, the page reloads and returns to the initial empty state with default content.
+
+## GigaReset (Nuclear Wipe)
+
+Click the GigaReset button (⊗ circle-X icon) in the ribbon or mobile action bar.
+
+**Confirmation dialog** appears:
+- Title: "GigaReset?"
+- Message: "This will erase all local data for this app..."
+- Buttons: "Cancel" / "Erase & Reload"
+
+**What is cleared:**
+- All `localStorage` entries (including theme and language)
+- All `sessionStorage` entries
+- All IndexedDB databases (enumerated via `indexedDB.databases()` when available, plus known app DB)
+- All Cache Storage entries (Service Worker caches)
+- All Service Worker registrations (if any)
+- All accessible cookies for this origin (best-effort)
+
+**Known limitations:**
+- `HttpOnly` cookies cannot be cleared from JavaScript
+- iOS Safari may retain some internal caches until storage pressure triggers eviction
+- Cross-tab state is not guaranteed to clear if other tabs have open DB connections (handles `onblocked`)
+- Browser back-forward cache (bfcache) may preserve state; `location.replace()` is used to mitigate
 
 ## HTML in Markdown
 
@@ -164,7 +189,7 @@ graph TD;
 
 ## Language Switcher
 
-Four languages: **English** (default), **Japanese**, **Chinese**, **Hindi**
+Nine languages: **English** (default), **Japanese**, **Chinese (Simplified)**, **Hindi**, **Spanish**, **Indonesian**, **Portuguese**, **French**, **Vietnamese**
 
 - Select from ribbon (desktop) or bottom bar (mobile)
 - All UI labels, tooltips, context menus, and toasts are translated
@@ -178,10 +203,28 @@ Four languages: **English** (default), **Japanese**, **Chinese**, **Hindi**
 
 ## Save Preview as PDF
 
+### Desktop
 - Click PDF button in ribbon or mobile action bar
-- Opens browser print dialog with all UI hidden
-- Print stylesheet renders only the preview content
-- MathJax and Mermaid output are included in the PDF
+- Opens a new browser window with clean preview HTML and triggers the print dialog
+- Print stylesheet renders only the preview content with proper pagination
+- MathJax and Mermaid output are included
+
+### Mobile
+- On mobile devices (detected via viewport width ≤768px + touch/UA heuristics), a **client-side PDF** is generated without opening the browser print UI
+- Uses [html2canvas](https://html2canvas.hertzen.com/) to render the preview into a canvas, then [jsPDF](https://github.com/parallax/jsPDF) to slice the canvas into multi-page A4 PDF
+- Process: Preparing → Rendering → Generating PDF
+- The export container uses `position:fixed; opacity:0; pointer-events:none` to stay renderable but invisible
+- Progress toasts show status; errors suggest reducing content length
+
+**iOS Safari behavior:**
+- `<a download>` may not trigger downloads on iOS Safari
+- Fallback 1: `navigator.share({ files: [...] })` — opens the iOS share sheet
+- Fallback 2: Opens blob URL in new tab — user can tap Share → Save to Files
+
+**Known limitations:**
+- Very long documents may exceed mobile memory limits (canvas size); consider splitting content
+- html2canvas renders at scale 2 by default; retries at scale 1 if the first attempt produces blank output
+- Code highlighting colors may not perfectly match the editor theme (forced to light/print style)
 
 ## Keyboard Shortcuts
 
@@ -196,11 +239,13 @@ Four languages: **English** (default), **Japanese**, **Chinese**, **Hindi**
 
 ## Browser/Performance Limitations
 
-- CDN scripts (DOMPurify, MathJax, Mermaid, JSZip) require internet on first load
+- CDN scripts (DOMPurify, MathJax, Mermaid, JSZip, html2pdf.js) require internet on first load
 - Large MathJax expressions or complex Mermaid diagrams may cause brief rendering delays
-- PDF output quality depends on the browser's print engine (best in Chrome/Edge)
+- Desktop PDF output quality depends on the browser's print engine (best in Chrome/Edge)
+- Mobile PDF generation depends on html2canvas rendering accuracy; some CSS features may not be captured
 - Images must be uploaded to the virtual workspace (IndexedDB)
 - Browser sandboxing prevents reading local disk files
+- iOS Safari has unique storage and download behaviors; see GigaReset and Mobile PDF sections
 
 ## License
 
