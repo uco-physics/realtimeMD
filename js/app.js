@@ -453,23 +453,42 @@ class App {
     // ========== Save Preview as PDF ==========
 
     _savePreviewAsPdf() {
+        // Detect mobile: narrow viewport + touch/mobile UA
+        const isMobile = this._isMobileDevice();
+
+        if (isMobile) {
+            this._generateMobilePdf();
+        } else {
+            this._desktopPrintPdf();
+        }
+    }
+
+    /**
+     * Detect mobile device using viewport + UA heuristics
+     */
+    _isMobileDevice() {
+        const narrowViewport = window.innerWidth <= 768;
+        const touchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const mobileUA = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        return narrowViewport && (touchDevice || mobileUA);
+    }
+
+    /**
+     * Desktop: open new window with clean preview HTML and trigger print dialog
+     */
+    _desktopPrintPdf() {
         this.showToast(t('toast.pdfInfo'), 'info');
 
-        // Get rendered preview HTML
         const previewEl = document.querySelector('.preview-content');
         if (!previewEl) return;
 
         const previewHtml = previewEl.innerHTML;
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-
-        // Open a new clean window with ONLY the preview content
         const printWin = window.open('', '_blank');
         if (!printWin) {
             this.showToast('Pop-up blocked. Please allow pop-ups for this site.', 'error');
             return;
         }
 
-        // Detect if content has MathJax or Mermaid
         const hasMath = previewHtml.includes('math-inline') || previewHtml.includes('math-display');
 
         printWin.document.write(`<!DOCTYPE html>
@@ -555,7 +574,6 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
 <div class="print-content">${previewHtml}</div>
 <script>
 (async function() {
-  // Wait for all images to load
   const imgs = document.querySelectorAll('img');
   if (imgs.length > 0) {
     await Promise.all(Array.from(imgs).map(img => {
@@ -563,15 +581,12 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
       return new Promise(r => { img.onload = r; img.onerror = r; });
     }));
   }
-  // Wait for MathJax typesetting
   if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
     try { await MathJax.typesetPromise(); } catch(e) { console.warn('MathJax error:', e); }
   }
-  // Small delay for rendering to settle, then print
   setTimeout(function() {
     window.focus();
     window.print();
-    // Close after printing (or cancel)
     setTimeout(function() { window.close(); }, 500);
   }, 300);
 })();
@@ -579,6 +594,159 @@ ${hasMath ? '<script>window.MathJax={tex:{inlineMath:[["\\\\(","\\\\)"]],display
 </body>
 </html>`);
         printWin.document.close();
+    }
+
+    /**
+     * Mobile: generate PDF client-side using html2pdf.js and download/share
+     */
+    async _generateMobilePdf() {
+        // Check html2pdf availability
+        if (typeof html2pdf === 'undefined') {
+            this.showToast('PDF library not loaded. Please try again.', 'error');
+            return;
+        }
+
+        const previewEl = document.querySelector('.preview-content');
+        if (!previewEl) return;
+
+        // Show progress toast
+        this.showToast('Generating PDF…', 'info');
+
+        try {
+            // Clone preview into an offscreen container with light styling
+            const container = document.createElement('div');
+            container.style.cssText = `
+                position: absolute; left: -9999px; top: 0;
+                width: 720px; padding: 20px;
+                background: #fff; color: #222;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                font-size: 12pt; line-height: 1.6;
+                overflow: visible; height: auto;
+            `;
+            container.innerHTML = previewEl.innerHTML;
+
+            // Force light-theme styles on cloned content
+            container.querySelectorAll('pre').forEach(el => {
+                el.style.cssText = 'background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:12px;overflow-x:auto;color:#333;';
+            });
+            container.querySelectorAll('code').forEach(el => {
+                if (el.parentElement?.tagName !== 'PRE') {
+                    el.style.cssText = 'background:#f0f0f0;color:#333;border:1px solid #ddd;border-radius:3px;padding:0.15em 0.3em;';
+                }
+            });
+            container.querySelectorAll('blockquote').forEach(el => {
+                el.style.cssText = 'border-left:4px solid #999;margin:1em 0;padding:0.5em 1em;color:#555;';
+            });
+            container.querySelectorAll('th').forEach(el => {
+                el.style.cssText = 'background:#f0f0f0;border:1px solid #ccc;padding:6px 10px;color:#333;font-weight:600;';
+            });
+            container.querySelectorAll('td').forEach(el => {
+                el.style.cssText = 'border:1px solid #ccc;padding:6px 10px;color:#333;';
+            });
+            container.querySelectorAll('a').forEach(el => {
+                el.style.cssText = 'color:#1e66f5;text-decoration:underline;';
+            });
+            container.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
+                el.style.color = '#111';
+            });
+
+            document.body.appendChild(container);
+
+            // Wait for images in clone to load
+            const imgs = container.querySelectorAll('img');
+            if (imgs.length > 0) {
+                await Promise.all(Array.from(imgs).map(img => {
+                    if (img.complete) return Promise.resolve();
+                    return new Promise(r => {
+                        img.onload = r;
+                        img.onerror = r;
+                    });
+                }));
+            }
+
+            // Wait for MathJax if present
+            if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                try { await MathJax.typesetPromise([container]); } catch (e) { /* ignore */ }
+            }
+
+            // Small settle delay
+            await new Promise(r => setTimeout(r, 200));
+
+            // Generate filename from active file or default
+            const activeFile = this.storage?.getSession?.()?.activeFile;
+            const baseName = activeFile
+                ? activeFile.replace(/^.*[/\\]/, '').replace(/\.[^.]+$/, '')
+                : 'document';
+            const fileName = `${baseName}.pdf`;
+
+            // Generate PDF using html2pdf.js
+            const opt = {
+                margin: [10, 10, 10, 10], // mm
+                filename: fileName,
+                image: { type: 'jpeg', quality: 0.92 },
+                html2canvas: {
+                    scale: 1.5, // Balance quality vs memory on mobile
+                    useCORS: true,
+                    logging: false,
+                    scrollX: 0,
+                    scrollY: 0,
+                    windowWidth: 720,
+                },
+                jsPDF: {
+                    unit: 'mm',
+                    format: 'a4',
+                    orientation: 'portrait'
+                },
+                pagebreak: {
+                    mode: ['avoid-all', 'css', 'legacy']
+                }
+            };
+
+            const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+
+            // Clean up offscreen container
+            document.body.removeChild(container);
+
+            // Download the generated PDF
+            this._downloadOrSharePdf(pdfBlob, fileName);
+
+            this.showToast(t('toast.saved'), 'success');
+
+        } catch (err) {
+            console.error('Mobile PDF generation failed:', err);
+            this.showToast(
+                'PDF generation failed. Try reducing content length or reload the page.',
+                'error'
+            );
+        }
+    }
+
+    /**
+     * Download PDF blob or share on iOS Safari where <a download> may not work
+     */
+    _downloadOrSharePdf(blob, fileName) {
+        const url = URL.createObjectURL(blob);
+
+        // Try <a download> first (works on most browsers)
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Fallback for iOS Safari where <a download> may not trigger
+        // If navigator.share is available, also offer sharing
+        if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'application/pdf' })] })) {
+            const file = new File([blob], fileName, { type: 'application/pdf' });
+            navigator.share({ files: [file], title: 'RealtimeMD PDF' }).catch(() => {
+                // Share cancelled or failed; download link was already attempted
+            });
+        }
+
+        // Revoke URL after delay to allow download to start
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
 
     // ========== Reset Session ==========

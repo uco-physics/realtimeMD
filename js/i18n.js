@@ -551,112 +551,6 @@ const translations = {
         'seo.title': 'RealtimeMD — Editor Markdown en tiempo real',
         'seo.description': 'Editor Markdown gratuito basado en navegador con vista previa en vivo, matemáticas, diagramas, gestión de archivos y persistencia de sesión. Sin backend.',
     },
-    ar: {
-        'app.title': 'RealtimeMD',
-        'tooltip.menu': 'القائمة',
-        'tooltip.undo': 'تراجع (Ctrl+Z)',
-        'tooltip.redo': 'إعادة (Ctrl+Y)',
-        'tooltip.heading': 'عنوان',
-        'tooltip.bold': 'غامق (Ctrl+B)',
-        'tooltip.italic': 'مائل (Ctrl+I)',
-        'tooltip.strikethrough': 'يتوسطه خط',
-        'tooltip.inlineCode': 'كود مضمّن',
-        'tooltip.codeBlock': 'كتلة كود',
-        'tooltip.link': 'رابط (Ctrl+K)',
-        'tooltip.image': 'صورة',
-        'tooltip.ul': 'قائمة نقطية',
-        'tooltip.ol': 'قائمة مرقمة',
-        'tooltip.checklist': 'قائمة مهام',
-        'tooltip.quote': 'اقتباس',
-        'tooltip.hr': 'خط أفقي',
-        'tooltip.table': 'جدول',
-        'tooltip.save': 'حفظ (Ctrl+S)',
-        'ribbon.explorer': 'مستكشف الملفات',
-        'ribbon.import': 'استيراد مساحة العمل',
-        'ribbon.export': 'تصدير مساحة العمل',
-        'ribbon.exportZip': 'تصدير كـ ZIP',
-        'ribbon.theme': 'تبديل السمة',
-        'ribbon.pdf': 'حفظ المعاينة كـ PDF',
-        'ribbon.language': 'اللغة',
-        'ribbon.reset': 'إعادة تعيين الجلسة',
-        'mobile.theme': 'السمة',
-        'mobile.pdf': 'PDF',
-        'mobile.zip': 'ZIP',
-        'mobile.reset': 'إعادة تعيين',
-        'mobile.help': 'مساعدة',
-        'ribbon.help': 'مساعدة',
-        'sidebar.explorer': 'المستكشف',
-        'sidebar.newFile': 'ملف جديد',
-        'sidebar.newFolder': 'مجلد جديد',
-        'sidebar.upload': 'رفع ملف',
-        'sidebar.collapseAll': 'طي الكل',
-        'sidebar.empty': 'لا توجد ملفات بعد',
-        'sidebar.emptyHint': 'أنشئ ملفاً باستخدام الأزرار أعلاه،\\nأو اسحب وأفلت للرفع.',
-        'ctx.newFile': 'ملف جديد',
-        'ctx.newFolder': 'مجلد جديد',
-        'ctx.rename': 'إعادة تسمية',
-        'ctx.duplicate': 'نسخ',
-        'ctx.copyPath': 'نسخ المسار',
-        'ctx.copyRelativePath': 'نسخ المسار النسبي',
-        'ctx.copyMdImage': 'نسخ كصورة Markdown',
-        'ctx.download': 'تنزيل',
-        'ctx.delete': 'حذف',
-        'pane.editor': 'المحرر',
-        'pane.preview': 'المعاينة',
-        'editor.placeholder': 'اكتب Markdown...',
-        'status.encoding': 'UTF-8',
-        'status.language': 'Markdown',
-        'dropzone.text': 'أفلت الملفات للرفع',
-        'toast.pathCopied': 'تم نسخ المسار',
-        'toast.relativePathCopied': 'تم نسخ المسار النسبي',
-        'toast.mdImageCopied': 'تم نسخ صورة Markdown',
-        'toast.saved': 'تم الحفظ',
-        'toast.themeDark': 'السمة: داكنة',
-        'toast.themeLight': 'السمة: فاتحة',
-        'toast.collapsed': 'تم طي جميع المجلدات',
-        'toast.uploaded': 'تم رفع {count} ملف(ات)',
-        'toast.renamed': 'تمت إعادة التسمية إلى "{name}"',
-        'toast.duplicated': 'تم إنشاء "{name}"',
-        'toast.downloaded': 'تم تنزيل "{name}"',
-        'toast.deleted': 'تم حذف "{name}"',
-        'toast.existsError': '"{name}" موجود بالفعل',
-        'toast.binaryNotEditable': 'لا يمكن تحرير الملف الثنائي: {name}',
-        'toast.exportOk': 'تم تصدير مساحة العمل',
-        'toast.importOk': 'تم استيراد مساحة العمل',
-        'toast.importError': 'فشل الاستيراد',
-        'toast.invalidWorkspace': 'ملف مساحة عمل غير صالح',
-        'toast.exportZipOk': 'تم التصدير كـ ZIP',
-        'toast.exportZipError': 'فشل تصدير ZIP',
-        'toast.pdfInfo': 'استخدم مربع حوار الطباعة في المتصفح للحفظ كـ PDF',
-        'dialog.deleteConfirm': 'حذف {type} "{name}"؟',
-        'dialog.replaceOrMerge': 'استبدال مساحة العمل الحالية؟\\nموافق → استبدال | إلغاء → دمج',
-        'dialog.fileType': 'ملف',
-        'dialog.folderType': 'مجلد',
-        'dialog.resetTitle': 'إعادة تعيين الجلسة؟',
-        'dialog.resetMessage': 'سيؤدي هذا إلى مسح بيانات الجلسة الحالية (الملفات المفتوحة، حالة مساحة العمل). لا يمكن التراجع. هل تريد المتابعة؟',
-        'dialog.cancel': 'إلغاء',
-        'dialog.reset': 'إعادة تعيين',
-        'help.title': 'مساعدة',
-        'help.images': '📷 الصور',
-        'help.imagesDesc': 'أدرج الصور باستخدام مسارات نسبية من الملف الحالي:',
-        'help.altText': 'نص بديل',
-        'help.imageFormats': 'الصيغ المدعومة: png, jpg, jpeg, gif, webp, svg',
-        'help.imageTip': 'نصيحة: انقر بزر الماوس الأيمن على ملف في المستكشف → "نسخ كصورة Markdown"',
-        'help.math': '📐 الرياضيات',
-        'help.mathDesc': 'استخدم علامات الدولار للتعبيرات الرياضية (يُعرض بواسطة MathJax):',
-        'help.mathInlineLabel': 'مضمّن',
-        'help.mathDisplayLabel': 'عرض',
-        'help.mathEscape': 'استخدم \\\\$ لعلامة دولار حرفية.',
-        'help.mermaid': '📊 مخططات Mermaid',
-        'help.mermaidDesc': 'أنشئ مخططات باستخدام كتل الكود:',
-        'help.mermaidStart': 'بداية',
-        'help.mermaidProcess': 'معالجة',
-        'help.mermaidEnd': 'نهاية',
-        'help.pdf': '🖨️ تصدير PDF',
-        'help.pdfDesc': 'انقر على زر PDF لفتح مربع حوار الطباعة في المتصفح. تُطبع المعاينة المُعروضة فقط.',
-        'seo.title': 'RealtimeMD — محرر Markdown فوري',
-        'seo.description': 'محرر Markdown مجاني يعمل في المتصفح مع معاينة فورية ورياضيات ورسوم بيانية وإدارة ملفات. لا يحتاج خادم.',
-    },
     id: {
         'app.title': 'RealtimeMD',
         'tooltip.menu': 'Menu',
@@ -1090,7 +984,6 @@ const LANG_META = {
     zh: { bcp47: 'zh-CN', ogLocale: 'zh_CN', dir: 'ltr', label: '中文' },
     hi: { bcp47: 'hi', ogLocale: 'hi_IN', dir: 'ltr', label: 'हिन्दी' },
     es: { bcp47: 'es', ogLocale: 'es_ES', dir: 'ltr', label: 'Español' },
-    ar: { bcp47: 'ar', ogLocale: 'ar_SA', dir: 'rtl', label: 'العربية' },
     id: { bcp47: 'id', ogLocale: 'id_ID', dir: 'ltr', label: 'Indonesia' },
     pt: { bcp47: 'pt', ogLocale: 'pt_BR', dir: 'ltr', label: 'Português' },
     fr: { bcp47: 'fr', ogLocale: 'fr_FR', dir: 'ltr', label: 'Français' },
@@ -1175,10 +1068,9 @@ export function applyTranslations() {
         el.placeholder = t(el.dataset.i18nPlaceholder);
     });
 
-    // Update html lang + dir attributes
+    // Update html lang attribute (all remaining locales are LTR)
     const meta = LANG_META[currentLang] || LANG_META.en;
     document.documentElement.lang = meta.bcp47;
-    document.documentElement.dir = meta.dir;
 
     // Update SEO meta tags
     _updateSeoMeta();
