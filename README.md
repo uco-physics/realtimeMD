@@ -13,7 +13,7 @@ A free, browser-based Markdown editor with live preview, virtual file management
 - **Save as PDF** — Print preview via browser print dialog (desktop and mobile)
 - **Session Persistence** — Data survives browser close
 - **Reset Session** — Clear session data and start fresh
-- **GigaReset** — Nuclear wipe of all local data (files, caches, storage, cookies)
+- **SuperReset** — Nuclear wipe of all local data (files, caches, storage, cookies)
 - **GitHub-like Markdown** — HTML blocks, MathJax, Mermaid diagrams
 - **Mobile-friendly** — Bottom action bar on small screens
 
@@ -59,7 +59,7 @@ On screens ≤767px, the ribbon is hidden and a compact bottom action bar appear
 - **PDF** — Save preview as PDF
 - **ZIP** — Export workspace as ZIP
 - **Reset** — Reset session
-- **GigaReset** — Nuclear wipe (circle-X icon)
+- **SuperReset** — Nuclear wipe (circle-X icon)
 - **Language selector** — EN/JA/ZH/HI/ES/ID/PT/FR/VI dropdown
 
 The bar includes `env(safe-area-inset-bottom)` padding for iOS devices. The workspace content area has bottom padding to prevent the bar from covering content. Desktop/tablet layouts are unaffected.
@@ -83,12 +83,12 @@ Click the reset button (↺ icon with exclamation) in the ribbon (desktop) or mo
 
 After reset, the page reloads and returns to the initial empty state with default content.
 
-## GigaReset (Nuclear Wipe)
+## SuperReset (Nuclear Wipe)
 
-Click the GigaReset button (⊗ circle-X icon) in the ribbon or mobile action bar.
+Click the SuperReset button (⊗ circle-X icon) in the ribbon or mobile action bar.
 
 **Confirmation dialog** appears:
-- Title: "GigaReset?"
+- Title: "SuperReset?"
 - Message: "This will erase all local data for this app..."
 - Buttons: "Cancel" / "Erase & Reload"
 
@@ -234,7 +234,7 @@ Nine languages: **English** (default), **Japanese**, **Chinese (Simplified)**, *
 - PDF output quality depends on the browser's print engine (best in Chrome/Edge)
 - Images must be uploaded to the virtual workspace (IndexedDB)
 - Browser sandboxing prevents reading local disk files
-- iOS Safari has unique storage behaviors; see GigaReset section
+- iOS Safari has unique storage behaviors; see SuperReset section
 
 ## License
 
